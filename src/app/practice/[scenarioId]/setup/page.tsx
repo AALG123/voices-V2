@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -122,10 +122,11 @@ export default function SetupPage({ params }: SetupPageProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [extraDetails, setExtraDetails] = useState<string>("");
   const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(() => {
-    const s = scenario?.duration ?? 0; // seconds
+    const s = scenario?.duration ?? 0;
     return Math.max(0, Math.floor(s / 60));
   });
 
+  const [customDurationSec, setCustomDurationSec] = useState<number | null>(null);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<
@@ -140,7 +141,6 @@ export default function SetupPage({ params }: SetupPageProps) {
   const [tpEdited, setTpEdited] = useState<boolean>(false);
   const [tpSavedAt, setTpSavedAt] = useState<number | null>(null);
 
-  // Presentational flow state
   const [flow, setFlow] = useState<PresentationalFlow | null>(null);
   const [flowLoading, setFlowLoading] = useState<boolean>(false);
   const [flowError, setFlowError] = useState<string | null>(null);
@@ -154,24 +154,102 @@ export default function SetupPage({ params }: SetupPageProps) {
 
     if (!file) return;
 
-    try {
+    // Check if this is the presentation scenario - use hardcoded demo data
+    if (scenario?.id === 'presentation') {
       setIsExtracting(true);
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/extract-text", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setExtractionError(data?.error || "Failed to extract text");
-        return;
+      
+      // Simulate processing delay - CHANGE THIS NUMBER FOR DELAY IN MILLISECONDS
+      setTimeout(() => {
+        // Hardcoded investment document content from the PDF
+        const hardcodedText = `Investing on One Page — 2025 Quickstart
+A concise, non-advisory checklist to build a low-cost, diversified portfolio you can stick with.
+
+Core Principles:
+- Pay yourself first: automate contributions each payday
+- Diversify broadly; avoid concentrated bets
+- Time in the market > timing the market
+- Keep costs low (favor broad index funds/ETFs)
+- Be tax-smart (use tax-advantaged accounts first)
+- Rebalance on a schedule; ignore short-term noise
+
+Step-by-Step Plan:
+1. Emergency fund: Save 3–6 months of expenses in a high-yield savings account
+2. Kill high-interest debt: Pay off >8–10% APR debt before investing
+3. Choose accounts: 401(k)/403(b) up to match → HSA (if eligible) → IRA (Roth or Traditional) → taxable brokerage
+4. Pick allocation by risk: Conservative 60/40, Balanced 70/30, Aggressive 90/10 (stocks/bonds)
+5. Fund selection: Prefer total-market index funds/ETFs (US + International) and investment-grade bond funds
+6. Automate & rebalance: Contribute each payday; rebalance yearly or when drift exceeds ±5%
+
+Simple Model Portfolios (Examples, not advice):
+- Conservative (60/40): US Stocks 35%, Intl Stocks 25%, Bonds 40%
+- Balanced (70/30): US Stocks 50%, Intl Stocks 20%, Bonds 30%
+- Aggressive (90/10): US Stocks 65%, Intl Stocks 25%, Bonds 10%
+
+Costs & Taxes:
+- Target <0.10–0.20% expense ratios for stock index funds; <0.10% for broad bond funds
+- Asset location: hold bonds/REITs in tax-advantaged accounts when possible
+- Prefer long-term holding (≥1 year) for favorable capital gains rates
+
+How Much & What to Expect:
+Rule of thumb: invest ~15% of gross income for retirement (20%+ if starting later)
+Expect volatility: stocks may decline 30–50% at times
+Long-run real returns have historically averaged ~4–8% for stocks and ~0–3% for bonds—never guaranteed
+
+Common Pitfalls:
+- Chasing recent winners or headlines
+- Frequent trading/market-timing
+- Ignoring fees and taxes
+- Overconcentration (single stocks/crypto/sector)
+- Using leverage without a plan
+- Not having an Investment Policy Statement (IPS)
+
+5-Minute Starter Example:
+Open a low-cost brokerage. In a retirement account, buy: 50% US Total-Market index fund/ETF, 20% International Total-Market, 30% US Investment-Grade Bonds. Automate contributions each payday; rebalance each January.`;
+
+        setExtracted({
+          text: hardcodedText,
+          meta: {
+            pages: 2,
+            chars: hardcodedText.length,
+            fileType: 'pdf',
+            processedBy: 'gemini-2.0-flash-exp'
+          }
+        });
+
+        // Auto-fill extra details after a short delay
+        setTimeout(() => {
+          const hardcodedDetails = `Presenting to: Finance 101 undergraduate students at UC Berkeley
+Topic: Personal investing fundamentals for beginners
+Duration: 15-minute presentation with Q&A
+Goal: Educate students on basic investment principles and help them start their investment journey
+Key focus areas: Index fund investing, portfolio diversification, and tax-advantaged accounts`;
+          
+          setExtraDetails(hardcodedDetails);
+        }, 500);
+
+        setIsExtracting(false);
+      }, 5000); // 5-second delay to simulate processing (5000 milliseconds = 5 seconds)
+    } else {
+      // Original API call for other scenarios
+      try {
+        setIsExtracting(true);
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch("/api/extract-text", {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setExtractionError(data?.error || "Failed to extract text");
+          return;
+        }
+        setExtracted(data);
+      } catch (err) {
+        setExtractionError("Network error while extracting text");
+      } finally {
+        setIsExtracting(false);
       }
-      setExtracted(data);
-    } catch (err) {
-      setExtractionError("Network error while extracting text");
-    } finally {
-      setIsExtracting(false);
     }
   };
 
@@ -185,7 +263,39 @@ export default function SetupPage({ params }: SetupPageProps) {
 
   const generateTalkingPoints = async (opts?: { force?: boolean }) => {
     if (!scenario) return;
-    if (tpEdited && !opts?.force) return; // gate if user edited
+    
+    // For presentation scenario, use hardcoded talking points
+    if (scenario.id === 'presentation') {
+      setTpLoading(true);
+      setTpError(null);
+      
+      // Simulate loading delay
+      setTimeout(() => {
+        const hardcodedTalkingPoints: TalkingPoint[] = [
+          { id: crypto.randomUUID(), text: "What's the difference between a 401(k) and an IRA?", importance: 5 },
+          { id: crypto.randomUUID(), text: "How much money do I need to start investing?", importance: 5 },
+          { id: crypto.randomUUID(), text: "Can you explain what expense ratios are and why they matter?", importance: 4 },
+          { id: crypto.randomUUID(), text: "What does it mean to diversify your portfolio?", importance: 5 },
+          { id: crypto.randomUUID(), text: "Should college students prioritize paying off student loans or investing?", importance: 4 },
+          { id: crypto.randomUUID(), text: "What's the advantage of index funds over picking individual stocks?", importance: 5 },
+          { id: crypto.randomUUID(), text: "How do I actually open a brokerage account?", importance: 3 },
+          { id: crypto.randomUUID(), text: "What happens if the stock market crashes right after I invest?", importance: 4 },
+          { id: crypto.randomUUID(), text: "Is cryptocurrency a good investment for beginners?", importance: 3 },
+          { id: crypto.randomUUID(), text: "How often should I check my investment account?", importance: 3 },
+          { id: crypto.randomUUID(), text: "What's the benefit of starting to invest while still in college?", importance: 4 },
+          { id: crypto.randomUUID(), text: "Can you explain dollar-cost averaging?", importance: 3 }
+        ];
+        
+        setTalkingPoints(hardcodedTalkingPoints);
+        setTpEdited(false);
+        setTpLoading(false);
+      }, 1500);
+      
+      return;
+    }
+    
+    // Original API call for other scenarios
+    if (tpEdited && !opts?.force) return;
     try {
       setTpLoading(true);
       setTpError(null);
@@ -216,6 +326,66 @@ export default function SetupPage({ params }: SetupPageProps) {
 
   const generateFlow = async (opts?: { force?: boolean }) => {
     if (!scenario?.presentational) return;
+    
+    // For presentation scenario, use hardcoded flow
+    if (scenario.id === 'presentation') {
+      setFlowLoading(true);
+      setFlowError(null);
+      
+      // Simulate loading delay
+      setTimeout(() => {
+        const hardcodedFlow: PresentationalFlow = {
+          intro: {
+            id: crypto.randomUUID(),
+            title: "Opening: Why Start Now",
+            goals: [
+              "I want to show you that $100/month at age 20 becomes $1.1 million at 65",
+              "I want to share three simple steps you can take today"
+            ]
+          },
+          sections: [
+            {
+              id: crypto.randomUUID(),
+              title: "The Only Three Things You Need",
+              goals: [
+                "I want you to know: 1) Open a Roth IRA, 2) Buy index funds (VTI), 3) Automate $50/month",
+                "I want to explain that index funds give you instant diversification with 0.04% fees"
+              ]
+            },
+            {
+              id: crypto.randomUUID(),
+              title: "Start Today, Not Tomorrow",
+              goals: [
+                "I want to tell you that waiting 10 years costs you half your retirement money",
+                "I want you to download Vanguard app right now and open an account - it takes 5 minutes"
+              ]
+            }
+          ],
+          conclusion: {
+            id: crypto.randomUUID(),
+            title: "Your Action Item",
+            goals: [
+              "I want you to commit: Open a Roth IRA tonight and invest your first dollar"
+            ]
+          },
+          qa: {
+            id: crypto.randomUUID(),
+            title: "Your Questions",
+            goals: [
+              "I want to answer all your questions about getting started"
+            ]
+          }
+        };
+        
+        setFlow(hardcodedFlow);
+        setFlowEdited(false);
+        setFlowLoading(false);
+      }, 2000);
+      
+      return;
+    }
+    
+    // Original API call for other scenarios
     if (flowEdited && !opts?.force) return;
     try {
       setFlowLoading(true);
@@ -245,7 +415,62 @@ export default function SetupPage({ params }: SetupPageProps) {
     }
   };
 
-  // Auto-generate after extraction completes (once), unless user already edited
+  // Load custom time limit from setup
+  const hasLoadedCustomConfigRef = useRef(false);
+  useEffect(() => {
+    if (!scenario) return;
+    if (hasLoadedCustomConfigRef.current) return;
+    hasLoadedCustomConfigRef.current = true;
+    try {
+      const key = `practice-config-${scenario.id}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const secs = Number(parsed?.timeLimitSeconds);
+        if (Number.isFinite(secs) && secs >= 0) {
+          setCustomDurationSec(secs);
+        }
+        localStorage.removeItem(key);
+      }
+    } catch {
+      // Ignore malformed config
+    }
+  }, [scenario]);
+
+  // Load agent prompt context from setup
+  useEffect(() => {
+    if (!scenario) return;
+    try {
+      const ctxKey = `practice-context-${scenario.id}`;
+      const rawCtx = localStorage.getItem(ctxKey);
+      if (rawCtx) {
+        const parsed = JSON.parse(rawCtx) as {
+          userExtras?: string;
+          talkingPoints?: Array<{ text: string; importance: number }>;
+          extractedText?: string;
+          extractedMeta?: any;
+        };
+        // Don't load from localStorage for presentation scenario
+        if (scenario.id !== 'presentation') {
+          setExtraDetails(parsed?.userExtras || "");
+          setTalkingPoints(
+            parsed?.talkingPoints 
+              ? parsed.talkingPoints.map(p => ({ ...p, id: crypto.randomUUID() }))
+              : null
+          );
+          setExtracted(parsed?.extractedText ? {
+            text: parsed.extractedText,
+            meta: parsed.extractedMeta || { pages: 1, chars: parsed.extractedText.length }
+          } : null);
+        }
+        localStorage.removeItem(ctxKey);
+      }
+    } catch {
+      // ignore malformed context
+    }
+  }, [scenario]);
+
+  // Auto-generate after extraction completes
   useEffect(() => {
     if (extracted && !tpEdited && !talkingPoints && !tpLoading) {
       void generateTalkingPoints();
@@ -253,7 +478,7 @@ export default function SetupPage({ params }: SetupPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extracted]);
 
-  // Auto-generate flow for presentational scenarios after extraction completes (once), unless user edited
+  // Auto-generate flow for presentational scenarios after extraction completes
   useEffect(() => {
     if (scenario?.presentational && extracted && !flowEdited && !flow && !flowLoading) {
       void generateFlow();
@@ -261,9 +486,9 @@ export default function SetupPage({ params }: SetupPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extracted, scenario?.presentational]);
 
-  // Also attempt initial flow generation for presentational scenarios on mount (without requiring extraction)
+  // For presentation scenario, also auto-generate on page load
   useEffect(() => {
-    if (scenario?.presentational && !flowEdited && !flow && !flowLoading) {
+    if (scenario?.presentational && scenario.id === 'presentation' && !flow && !flowLoading) {
       void generateFlow();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -630,6 +855,7 @@ export default function SetupPage({ params }: SetupPageProps) {
                   )}
                 </div>
               )}
+
               {/* Talking points */}
               <div className="pt-4">
                 <div className="flex items-center justify-between mb-2">

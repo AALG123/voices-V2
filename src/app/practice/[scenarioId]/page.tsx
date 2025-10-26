@@ -25,7 +25,7 @@ import {
   selectAgentToSpeak,
 } from "@/lib/agent-responses";
 import { ttsService } from "@/lib/tts-service";
-import { Message, Agent, DifficultyLevel } from "@/types";
+import { Message, Agent, DifficultyLevel, PresentationalFlow, FlowSection } from "@/types";
 import {
   Mic,
   MicOff,
@@ -38,8 +38,14 @@ import {
   Settings,
   Check,
   AlertCircle,
+  ChevronRight,
+  MessageSquare,
+  Presentation,
 } from "lucide-react";
 import { formatTime } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
 
 interface PracticePageProps {
   params: Promise<{ scenarioId: string }>;
@@ -57,6 +63,78 @@ declare global {
     webkitSpeechRecognition: any;
   }
 }
+
+// Hardcoded presentation flow for investment presentation - SHORT 30-second version
+const HARDCODED_FLOW: PresentationalFlow = {
+  intro: {
+    id: "intro",
+    title: "Opening: Why Start Now",
+    goals: [
+      "I want to show you that $100/month at age 20 becomes $1.1 million at 65",
+      "I want to share three simple steps you can take today"
+    ]
+  },
+  sections: [
+    {
+      id: "section-1",
+      title: "The Only Three Things You Need",
+      goals: [
+        "I want you to know: 1) Open a Roth IRA, 2) Buy index funds (VTI), 3) Automate $50/month",
+        "I want to explain that index funds give you instant diversification with 0.04% fees"
+      ]
+    },
+    {
+      id: "section-2",
+      title: "Start Today, Not Tomorrow",
+      goals: [
+        "I want to tell you that waiting 10 years costs you half your retirement money",
+        "I want you to download Vanguard app right now and open an account - it takes 5 minutes"
+      ]
+    }
+  ],
+  conclusion: {
+    id: "conclusion",
+    title: "Your Action Item",
+    goals: [
+      "I want you to commit: Open a Roth IRA tonight and invest your first dollar"
+    ]
+  },
+  qa: {
+    id: "qa",
+    title: "Your Questions",
+    goals: [
+      "I want to answer all your questions about getting started"
+    ]
+  }
+};
+
+// Hardcoded investment-specific responses
+const INVESTMENT_RESPONSES = [
+  "That's a great point about diversification. As the document mentions, you should avoid concentrated bets and favor broad index funds.",
+  "Exactly! The core principle is to pay yourself first by automating contributions each payday.",
+  "You're right to focus on expense ratios. Target less than 0.20% for stock index funds and less than 0.10% for bond funds.",
+  "Good question about the emergency fund. The document recommends saving 3-6 months of expenses in a high-yield savings account first.",
+  "The three model portfolios are Conservative 60/40, Balanced 70/30, and Aggressive 90/10 for stocks to bonds ratio.",
+  "For college students, you can start investing with as little as $50 per month. Time in the market beats timing the market.",
+  "The step-by-step plan starts with your 401(k) up to the employer match, then HSA if eligible, then IRA, and finally a taxable brokerage.",
+  "Remember, the rule of thumb is to invest about 15% of gross income for retirement, or 20% if you're starting later.",
+];
+
+// Hardcoded Q&A questions that agents will ask after 30 seconds - ALL UNIQUE
+const QA_QUESTIONS = [
+  { agentIndex: 0, question: "Can you explain the difference between a 401(k) and an IRA? I'm confused about which one to choose." },
+  { agentIndex: 1, question: "How much money do I actually need to start investing? I only have like $100 saved." },
+  { agentIndex: 2, question: "What exactly are expense ratios and why should I care about them?" },
+  { agentIndex: 3, question: "Should I pay off my student loans first or start investing now?" },
+  { agentIndex: 0, question: "Is cryptocurrency a good investment for beginners like us?" },
+  { agentIndex: 1, question: "How do I actually open a brokerage account? Can you walk us through the steps?" },
+  { agentIndex: 2, question: "What happens if the stock market crashes right after I invest all my money?" },
+  { agentIndex: 3, question: "Can you explain what dollar-cost averaging means in simple terms?" },
+  { agentIndex: 0, question: "What's the difference between VTI, VXUS, and BND that you mentioned?" },
+  { agentIndex: 1, question: "How often should I check my investment account once I start?" },
+  { agentIndex: 2, question: "Is it better to invest a lump sum or spread it out over time?" },
+  { agentIndex: 3, question: "What if I can only afford to invest $25 a month, is that even worth it?" }
+];
 
 export default function PracticePage({ params }: PracticePageProps) {
   const resolvedParams = use(params);
@@ -79,37 +157,34 @@ export default function PracticePage({ params }: PracticePageProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedVideoDeviceId, setSelectedVideoDeviceId] =
-    useState<string>("");
-  const [selectedAudioDeviceId, setSelectedAudioDeviceId] =
-    useState<string>("");
-  const [customDurationSec, setCustomDurationSec] = useState<number | null>(
-    null
-  );
+  const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string>("");
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string>("");
+  const [customDurationSec, setCustomDurationSec] = useState<number | null>(null);
   const [userExtrasForContext, setUserExtrasForContext] = useState<string>("");
   const [talkingPointsForContext, setTalkingPointsForContext] = useState<
     Array<{ text: string; importance: number }>
   >([]);
   const [extractedDocumentText, setExtractedDocumentText] = useState<string>("");
   
-  // Gemini Interviewer State
-  const [useGeminiInterviewer, setUseGeminiInterviewer] = useState(true); // New: Toggle for Gemini mode
-  const [geminiConversationHistory, setGeminiConversationHistory] = useState<any[]>([]);
-  const [isGeminiProcessing, setIsGeminiProcessing] = useState(false);
-  const [currentAgentIndex, setCurrentAgentIndex] = useState(0); // Track which agent voice to use
-
+  // Presentation-specific state
+  const [currentFlowSection, setCurrentFlowSection] = useState<string>("intro");
+  const [presentationFlow, setPresentationFlow] = useState<PresentationalFlow | null>(null);
+  const [qaStartTime, setQaStartTime] = useState<number | null>(null);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [hardcodedResponseIndex, setHardcodedResponseIndex] = useState(0);
+  
   // TTS State
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     const saved = localStorage.getItem("tts-enabled");
     return saved ? JSON.parse(saved) : true;
   });
 
-  // Speech Recognition State
+  // Speech Recognition State - Disabled for presentation
   const [isListening, setIsListening] = useState(false);
-  const [speechRecognitionSupported, setSpeechRecognitionSupported] =
-    useState(false);
+  const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(false);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [fullTranscript, setFullTranscript] = useState("");
+  const [userSpeechBuffer, setUserSpeechBuffer] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentResponseTimers = useRef<NodeJS.Timeout[]>([]);
@@ -119,6 +194,7 @@ export default function PracticePage({ params }: PracticePageProps) {
   const audioStreamRef = useRef<MediaStream | null>(null);
   const recognitionRef = useRef<any>(null);
   const lastTranscriptTimeRef = useRef<number>(Date.now());
+  const qaTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update TTS service when enabled state changes
   useEffect(() => {
@@ -126,148 +202,135 @@ export default function PracticePage({ params }: PracticePageProps) {
     localStorage.setItem("tts-enabled", JSON.stringify(ttsEnabled));
   }, [ttsEnabled]);
 
-  // Check for Speech Recognition support
+  // Check for Speech Recognition support - DISABLED for presentation demo
   useEffect(() => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      setSpeechRecognitionSupported(true);
-    } else {
-      setSpeechRecognitionSupported(false);
-      setMicError(
-        "Speech recognition is not supported in your browser. Please use Chrome or Edge."
-      );
-    }
+    // Speech recognition disabled for presentation demo
+    setSpeechRecognitionSupported(false);
   }, []);
 
-  // Initialize Speech Recognition
+  // Initialize Speech Recognition - DISABLED for presentation demo
   const initializeSpeechRecognition = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return null;
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => {
-      console.log("Speech recognition started");
-      setIsListening(true);
-      setMicError(null);
-    };
-
-    recognition.onresult = (event: any) => {
-      let interimText = "";
-      let finalText = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalText += transcript + " ";
-        } else {
-          interimText += transcript;
-        }
-      }
-
-      setInterimTranscript(interimText);
-
-      if (finalText.trim()) {
-        const now = Date.now();
-        // Only add message if enough time has passed since last transcript (debounce)
-        if (now - lastTranscriptTimeRef.current > 2000) {
-          const userMessage: Message = {
-            id: `msg-${now}`,
-            agentId: "user",
-            agentName: "You",
-            content: finalText.trim(),
-            timestamp: new Date(),
-            isUser: true,
-          };
-
-          setMessages((prev) => [...prev, userMessage]);
-          setFullTranscript((prev) => prev + " " + finalText);
-
-          // NEW: Route to Gemini interviewer or regular agents
-          if (useGeminiInterviewer) {
-            handleGeminiInterviewerResponse(finalText.trim());
-          } else {
-            // Update conversation state and schedule agent response
-            setConvState((prev) => {
-              const next = updateStateOnUserMessage(prev);
-              if (agents.length > 0 && !sessionEnded) scheduleAgentResponse(next);
-              return next;
-            });
-          }
-
-          lastTranscriptTimeRef.current = now;
-        }
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
-      if (event.error === "no-speech") {
-        setMicError("No speech detected. Please speak clearly.");
-      } else if (event.error === "not-allowed") {
-        setMicError(
-          "Microphone access denied. Please allow microphone access."
-        );
-      } else {
-        setMicError(`Speech recognition error: ${event.error}`);
-      }
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      console.log("Speech recognition ended");
-      setIsListening(false);
-      // Restart if session is still active and not muted
-      if (isActive && !sessionEnded && !isMuted) {
-        setTimeout(() => {
-          startListening();
-        }, 100);
-      }
-    };
-
-    return recognition;
+    return null; // Speech recognition disabled
   };
 
   const startListening = () => {
-    if (!speechRecognitionSupported || isMuted || sessionEnded) return;
-
-    if (!recognitionRef.current) {
-      recognitionRef.current = initializeSpeechRecognition();
-    }
-
-    if (recognitionRef.current && !isListening) {
-      try {
-        recognitionRef.current.start();
-      } catch (error) {
-        console.error("Error starting speech recognition:", error);
-        // Recognition might already be started, try to stop and restart
-        try {
-          recognitionRef.current.stop();
-          setTimeout(() => {
-            recognitionRef.current?.start();
-          }, 100);
-        } catch (e) {
-          console.error("Failed to restart recognition:", e);
-        }
-      }
-    }
+    // Speech recognition disabled for presentation demo
   };
 
   const stopListening = () => {
-    if (recognitionRef.current && isListening) {
-      try {
-        recognitionRef.current.stop();
-      } catch (error) {
-        console.error("Error stopping speech recognition:", error);
-      }
-    }
+    // Speech recognition disabled for presentation demo
   };
+
+  // Generate hardcoded response for presentation scenario
+  const generateHardcodedResponse = () => {
+    if (!agents.length || sessionEnded) return;
+    
+    // Select a random agent
+    const agent = agents[Math.floor(Math.random() * agents.length)];
+    
+    // Get next hardcoded response
+    const response = INVESTMENT_RESPONSES[hardcodedResponseIndex % INVESTMENT_RESPONSES.length];
+    setHardcodedResponseIndex(prev => prev + 1);
+    
+    // Add slight delay for natural conversation
+    setTimeout(() => {
+      const aiMessage: Message = {
+        id: `msg-${Date.now()}-${Math.random()}`,
+        agentId: agent.id,
+        agentName: agent.name,
+        content: response,
+        timestamp: new Date(),
+        isUser: false,
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+
+      // Queue TTS for agent message
+      if (ttsService.isEnabled()) {
+        ttsService.queueSpeech({
+          text: response,
+          agentName: agent.name,
+          messageId: aiMessage.id,
+          voiceId: agent.voiceId,
+        });
+      }
+    }, 2000);
+  };
+
+  // Start Q&A session after 30 seconds for presentation
+  useEffect(() => {
+    // Debug logging
+    if (scenario?.id === 'presentation') {
+      console.log(`[Q&A Debug] Time: ${timeElapsed}s, QA Started: ${!!qaStartTime}, Agents: ${agents.length}, Question Index: ${currentQuestionIndex}`);
+    }
+    
+    if (scenario?.id === 'presentation' && timeElapsed === 30 && !qaStartTime && agents.length > 0 && !sessionEnded) {
+      console.log('[Q&A] Starting Q&A session at 30 seconds');
+      setQaStartTime(timeElapsed);
+      setCurrentFlowSection("qa");
+      
+      // Immediately ask first question
+      const askQuestion = (index: number) => {
+        if (index >= QA_QUESTIONS.length || sessionEnded) {
+          console.log('[Q&A] Session complete or ended');
+          return;
+        }
+        
+        const qa = QA_QUESTIONS[index];
+        const agent = agents[qa.agentIndex % agents.length];
+        
+        if (!agent) {
+          console.error('[Q&A] No agent found for question', index);
+          return;
+        }
+        
+        console.log(`[Q&A] Agent ${agent.name} asking question ${index + 1}/${QA_QUESTIONS.length}`);
+        
+        const questionMessage: Message = {
+          id: `qa-${Date.now()}-${index}`,
+          agentId: agent.id,
+          agentName: agent.name,
+          content: qa.question,
+          timestamp: new Date(),
+          isUser: false,
+        };
+
+        setMessages((prev) => [...prev, questionMessage]);
+        
+        // Queue TTS for question
+        if (ttsEnabled) {
+          console.log(`[TTS] Queueing speech for ${agent.name}`);
+          ttsService.queueSpeech({
+            text: qa.question,
+            agentName: agent.name,
+            messageId: questionMessage.id,
+            voiceId: agent.voiceId || 'b5f4515fd395410b9ed3aef6fa51d9a0',
+          });
+        }
+        
+        // Schedule next question
+        const nextIndex = index + 1;
+        if (nextIndex < QA_QUESTIONS.length) {
+          const delay = 6000 + Math.random() * 4000;
+          console.log(`[Q&A] Next question in ${delay/1000} seconds`);
+          qaTimerRef.current = setTimeout(() => askQuestion(nextIndex), delay);
+        }
+      };
+      
+      // Start with first question after 1 second
+      setTimeout(() => askQuestion(0), 1000);
+    }
+  }, [timeElapsed, qaStartTime, agents, sessionEnded, scenario?.id, ttsEnabled]);
+
+  // Clean up Q&A timer
+  useEffect(() => {
+    return () => {
+      if (qaTimerRef.current) {
+        clearTimeout(qaTimerRef.current);
+        qaTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Load custom time limit from setup
   const hasLoadedCustomConfigRef = useRef(false);
@@ -315,6 +378,13 @@ export default function PracticePage({ params }: PracticePageProps) {
       }
     } catch {
       // ignore malformed context
+    }
+  }, [scenario]);
+
+  // Set presentation flow for presentation scenario
+  useEffect(() => {
+    if (scenario?.id === 'presentation') {
+      setPresentationFlow(HARDCODED_FLOW);
     }
   }, [scenario]);
 
@@ -398,11 +468,6 @@ export default function PracticePage({ params }: PracticePageProps) {
 
       setMicError(null);
       await enumerateDevices();
-
-      // Start speech recognition after microphone is ready
-      if (!isMuted && speechRecognitionSupported) {
-        startListening();
-      }
     } catch (error) {
       console.error("Error accessing microphone:", error);
       setMicError("Unable to access microphone. Please check permissions.");
@@ -416,20 +481,11 @@ export default function PracticePage({ params }: PracticePageProps) {
         await startCamera();
       }
       await startMicrophone();
-      
-      // Give a small delay for microphone to initialize, then start STT
-      setTimeout(() => {
-        if (!isMuted && speechRecognitionSupported) {
-          console.log("Starting speech recognition after media init...");
-          startListening();
-        }
-      }, 500);
     };
     
     initMedia();
 
     return () => {
-      stopListening();
       if (videoStreamRef.current) {
         videoStreamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -463,13 +519,7 @@ export default function PracticePage({ params }: PracticePageProps) {
         track.enabled = !isMuted;
       });
     }
-
-    if (isMuted) {
-      stopListening();
-    } else if (!sessionEnded && speechRecognitionSupported) {
-      startListening();
-    }
-  }, [isMuted, sessionEnded, speechRecognitionSupported]);
+  }, [isMuted]);
 
   // Handle video device change
   const handleVideoDeviceChange = async (deviceId: string) => {
@@ -485,117 +535,43 @@ export default function PracticePage({ params }: PracticePageProps) {
     await startMicrophone(deviceId);
   };
 
-  // Build scenario-specific system prompt for Gemini
-  const buildScenarioSystemPrompt = (scenario: any): string => {
-    const basePrompt = `You are an intelligent, articulate interviewer helping the user practice for a ${scenario.type} scenario.`;
-    
-    let scenarioSpecific = '';
-    
-    switch (scenario.type) {
-      case 'party':
-        scenarioSpecific = 'You are a friendly party guest. Ask casual questions to help the user practice social conversations. Be warm, engaging, and help them feel comfortable in social situations.';
-        break;
-      case 'classroom':
-        scenarioSpecific = 'You are an engaged classroom participant or instructor. Ask thoughtful questions to encourage discussion and critical thinking. Help the user articulate their ideas clearly.';
-        break;
-      case 'job-interview':
-        scenarioSpecific = 'You are a professional job interviewer. Ask relevant interview questions about experience, skills, and motivations. Be professional yet encouraging.';
-        break;
-      case 'de-escalation':
-        scenarioSpecific = 'You are someone in a tense situation that needs de-escalation. Start with concern or frustration, but be receptive to calm, empathetic responses. Help the user practice conflict resolution.';
-        break;
-      case 'presentation':
-        scenarioSpecific = 'You are an audience member attending a presentation. Ask clarifying questions about the content, request examples, and engage thoughtfully with the material.';
-        break;
-      default:
-        scenarioSpecific = 'Engage with the user in a thoughtful, relevant way based on the conversation context.';
-    }
-    
-    let contextInfo = '';
-    if (userExtrasForContext) {
-      contextInfo += `\n\nAdditional context about the user: ${userExtrasForContext}`;
-    }
-    
-    if (talkingPointsForContext && talkingPointsForContext.length > 0) {
-      const points = talkingPointsForContext.map(p => p.text).join(', ');
-      contextInfo += `\n\nKey topics to cover: ${points}`;
-    }
-    
-    if (extractedDocumentText) {
-      // Truncate document text to avoid token limits (use first ~3000 chars)
-      const docPreview = extractedDocumentText.slice(0, 3000);
-      contextInfo += `\n\nDocument content the user wants to discuss:\n${docPreview}${extractedDocumentText.length > 3000 ? '...' : ''}`;
-    }
-    
-    return `${basePrompt}\n\n${scenarioSpecific}${contextInfo}\n\nImportant guidelines:
-- Ask one question or make one statement at a time
-- Keep responses under 3 sentences
-- Listen actively and respond based on what the user says
-- Be encouraging and help the user practice their communication skills
-- Stay in character for the ${scenario.type} scenario`;
-  };
-
   useEffect(() => {
     if (!scenario) return;
 
+    // Generate agents first
     const generatedAgents = generateAgents(scenario);
     setAgents(generatedAgents);
+    console.log(`[Setup] Generated ${generatedAgents.length} agents for ${scenario.id}`);
+    
+    // Make sure TTS is enabled for presentation
+    if (scenario.id === 'presentation') {
+      setTtsEnabled(true);
+      ttsService.setEnabled(true);
+      console.log('[Setup] TTS enabled for presentation');
+    }
 
-    // Initial greeting - delay to ensure agents are set
-    setTimeout(() => {
-      if (useGeminiInterviewer && generatedAgents.length > 0) {
-        // Get initial greeting from Gemini
-        const initGreeting = async () => {
-          const scenarioSystemPrompt = buildScenarioSystemPrompt(scenario);
-          try {
-            const response = await fetch('/api/gemini/interview', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userInput: "START_CONVERSATION",
-                conversationHistory: [],
-                customSystemPrompt: scenarioSystemPrompt + "\n\nThis is the start of the conversation. Give a brief, friendly greeting and ask an opening question to begin the practice session."
-              })
-            });
-            
-            if (response.ok) {
-              const data = await response.json();
-              setGeminiConversationHistory(data.conversationHistory);
-              
-              const aiAgent = generatedAgents[0];
-              const greetingMessage: Message = {
-                id: `msg-${Date.now()}`,
-                agentId: aiAgent.id,
-                agentName: aiAgent.name,
-                content: data.response,
-                timestamp: new Date(),
-                isUser: false,
-              };
-              setMessages([greetingMessage]);
-              
-              // Start with second agent for next response
-              setCurrentAgentIndex(1);
-              
-              if (ttsService.isEnabled()) {
-                ttsService.queueSpeech({
-                  text: data.response,
-                  agentName: aiAgent.name,
-                  messageId: greetingMessage.id,
-                  voiceId: aiAgent.voiceId,
-                });
-              }
-            }
-          } catch (error) {
-            console.error('Failed to get initial Gemini greeting:', error);
-            // Fallback to default greeting
-            const welcomeMessage = "Hello! Welcome to the session. Feel free to introduce yourself!";
-            addAgentMessage(generatedAgents[0], welcomeMessage);
-          }
+    // Initial greeting for presentation
+    if (scenario.id === 'presentation') {
+      setTimeout(() => {
+        const welcomeMessage = "Welcome everyone! Let me show you why starting to invest now will change your life. Just $100 a month at age 20 becomes 1.1 million dollars at retirement!";
+        
+        const userMessage: Message = {
+          id: `msg-${Date.now()}`,
+          agentId: "user",
+          agentName: "You (Presenter)",
+          content: welcomeMessage,
+          timestamp: new Date(),
+          isUser: true,
         };
         
-        initGreeting();
-      } else {
-        // Regular agent greeting
+        setMessages([userMessage]);
+        
+        console.log('[Setup] Presentation started. Timer starting. Q&A will begin at 30 seconds.');
+        console.log(`[Setup] Agents available: ${generatedAgents.map(a => a.name).join(', ')}`);
+      }, 2000);
+    } else {
+      // Original behavior for other scenarios
+      setTimeout(() => {
         const welcomeMessage = generatedAgents[0]?.emotionPrefix
           ? `${generatedAgents[0].emotionPrefix} Hello! Welcome to the session. Feel free to introduce yourself!`
           : "Hello! Welcome to the session. Feel free to introduce yourself!";
@@ -606,9 +582,9 @@ export default function PracticePage({ params }: PracticePageProps) {
             advanceAfterAgentResponse(prev, generatedAgents[0].id)
           );
         }
-      }
-    }, 2000);
-  }, [scenario, useGeminiInterviewer]);
+      }, 2000);
+    }
+  }, [scenario]);
 
   const effectiveDuration =
     customDurationSec !== null ? customDurationSec : scenario?.duration ?? 0;
@@ -619,6 +595,12 @@ export default function PracticePage({ params }: PracticePageProps) {
     const timer = setInterval(() => {
       setTimeElapsed((prev) => {
         const newTime = prev + 1;
+        
+        // Debug log for presentation
+        if (scenario?.id === 'presentation' && (newTime === 10 || newTime === 20 || newTime === 25 || newTime === 30)) {
+          console.log(`[Timer] ${newTime} seconds elapsed`);
+        }
+        
         if (effectiveDuration > 0 && newTime >= effectiveDuration) {
           handleEndSession();
         }
@@ -626,8 +608,13 @@ export default function PracticePage({ params }: PracticePageProps) {
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [isActive, sessionEnded, effectiveDuration]);
+    console.log('[Timer] Started');
+
+    return () => {
+      clearInterval(timer);
+      console.log('[Timer] Stopped');
+    };
+  }, [isActive, sessionEnded, effectiveDuration, scenario?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -652,85 +639,6 @@ export default function PracticePage({ params }: PracticePageProps) {
         messageId: newMessage.id,
         voiceId: agent.voiceId,
       });
-    }
-  };
-
-  // NEW: Handle Gemini AI Interviewer Response
-  const handleGeminiInterviewerResponse = async (userText: string) => {
-    if (isGeminiProcessing || !scenario) return;
-    
-    setIsGeminiProcessing(true);
-    
-    try {
-      // Build custom system prompt based on scenario
-      const scenarioSystemPrompt = buildScenarioSystemPrompt(scenario);
-      
-      // Call Gemini API
-      const response = await fetch('/api/gemini/interview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userInput: userText,
-          conversationHistory: geminiConversationHistory,
-          customSystemPrompt: scenarioSystemPrompt
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to get response from interviewer');
-      }
-
-      const data = await response.json();
-      const assistantText = data.response;
-
-      // Update conversation history
-      setGeminiConversationHistory(data.conversationHistory);
-
-      // Rotate through agents for different voices
-      const aiAgent = agents[currentAgentIndex % agents.length] || agents[0] || { 
-        id: 'ai', 
-        name: 'AI Interviewer', 
-        voiceId: 'b5f4515fd395410b9ed3aef6fa51d9a0' 
-      };
-      
-      // Move to next agent for next response
-      setCurrentAgentIndex(prev => prev + 1);
-
-      const aiMessage: Message = {
-        id: `msg-${Date.now()}-${Math.random()}`,
-        agentId: aiAgent.id,
-        agentName: aiAgent.name,
-        content: assistantText,
-        timestamp: new Date(),
-        isUser: false,
-      };
-
-      setMessages((prev) => [...prev, aiMessage]);
-
-      // Speak the response using TTS with the agent's voice
-      if (ttsService.isEnabled()) {
-        ttsService.queueSpeech({
-          text: assistantText,
-          agentName: aiAgent.name,
-          messageId: aiMessage.id,
-          voiceId: aiAgent.voiceId,
-        });
-      }
-
-    } catch (error: any) {
-      console.error('Error processing Gemini response:', error);
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        agentId: 'system',
-        agentName: 'System',
-        content: `Sorry, I encountered an error: ${error.message}. Please try again.`,
-        timestamp: new Date(),
-        isUser: false,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsGeminiProcessing(false);
     }
   };
 
@@ -799,21 +707,28 @@ export default function PracticePage({ params }: PracticePageProps) {
 
     setMessages((prev) => [...prev, userMessage]);
     setUserInput("");
-    setConvState((prev) => {
-      const next = updateStateOnUserMessage(prev);
-      if (agents.length > 0 && !sessionEnded) scheduleAgentResponse(next);
-      return next;
-    });
+    
+    if (scenario?.id === 'presentation') {
+      generateHardcodedResponse();
+    } else {
+      setConvState((prev) => {
+        const next = updateStateOnUserMessage(prev);
+        if (agents.length > 0 && !sessionEnded) scheduleAgentResponse(next);
+        return next;
+      });
+    }
   };
 
   const handleEndSession = () => {
     setIsActive(false);
     setSessionEnded(true);
 
-    stopListening();
-
     agentResponseTimers.current.forEach((timer) => clearTimeout(timer));
     agentResponseTimers.current = [];
+
+    if (qaTimerRef.current) {
+      clearTimeout(qaTimerRef.current);
+    }
 
     ttsService.stopAll();
 
@@ -821,7 +736,7 @@ export default function PracticePage({ params }: PracticePageProps) {
     const score = calculateScore(userMessages, timeElapsed, difficulty);
     setFinalScore(score);
 
-    // Save session with browser-based transcript
+    // Save session
     const sessions = JSON.parse(
       localStorage.getItem("practice-sessions") || "[]"
     );
@@ -831,7 +746,7 @@ export default function PracticePage({ params }: PracticePageProps) {
       score,
       duration: timeElapsed,
       difficulty,
-      transcript: fullTranscript.trim() || null,
+      transcript: fullTranscript.trim() || userSpeechBuffer.trim() || null,
     });
     localStorage.setItem("practice-sessions", JSON.stringify(sessions));
 
@@ -848,6 +763,26 @@ export default function PracticePage({ params }: PracticePageProps) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    }
+  };
+
+  // Function to get all sections for navigation
+  const getAllSections = (): FlowSection[] => {
+    if (!presentationFlow) return [];
+    return [
+      presentationFlow.intro,
+      ...presentationFlow.sections,
+      presentationFlow.conclusion,
+      presentationFlow.qa
+    ];
+  };
+
+  // Function to advance to next section
+  const advanceToNextSection = () => {
+    const allSections = getAllSections();
+    const currentIndex = allSections.findIndex(s => s.id === currentFlowSection);
+    if (currentIndex < allSections.length - 1) {
+      setCurrentFlowSection(allSections[currentIndex + 1].id);
     }
   };
 
@@ -934,140 +869,195 @@ export default function PracticePage({ params }: PracticePageProps) {
         <div className="flex items-center space-x-6 text-gray-300 text-sm">
           <div className="flex items-center">
             <Clock className="w-4 h-4 mr-2" />
-            {effectiveDuration > 0 ? (
-              <>
-                {formatTime(Math.max(0, effectiveDuration - timeElapsed))} left
-              </>
+            {scenario.id === 'presentation' ? (
+              timeElapsed < 30 ? (
+                <span className="text-yellow-400">
+                  Q&A starts in {30 - timeElapsed}s
+                </span>
+              ) : (
+                <span className="text-green-400">
+                  Q&A Active ({formatTime(timeElapsed)})
+                </span>
+              )
             ) : (
-              <>Timer off</>
+              effectiveDuration > 0 ? (
+                <>
+                  {formatTime(Math.max(0, effectiveDuration - timeElapsed))} left
+                </>
+              ) : (
+                <>Timer: {formatTime(timeElapsed)}</>
+              )
             )}
           </div>
-          <div className="flex items-center">
-            <UsersIcon className="w-4 h-4 mr-2" />
-            {agents.length + 1} participants
-          </div>
-          <div className="flex items-center px-3 py-1 bg-gray-700 rounded">
-            <span className="text-xs font-medium">
-              Difficulty: <span className="capitalize">{difficulty}</span>
-            </span>
-          </div>
-          {isListening && (
-            <div className="flex items-center px-3 py-1 bg-green-700 rounded animate-pulse">
-              <Mic className="w-3 h-3 mr-1" />
-              <span className="text-xs font-medium">Listening</span>
+          {timeElapsed >= 30 && scenario.id === 'presentation' && (
+            <div className="flex items-center px-3 py-1 bg-orange-700 rounded animate-pulse">
+              <MessageSquare className="w-3 h-3 mr-1" />
+              <span className="text-xs font-medium">Q&A Session Active</span>
             </div>
           )}
+          <div className="flex items-center">
+            <UsersIcon className="w-4 h-4 mr-2" />
+            {agents.length} students + you
+          </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - User Video */}
-        <div className="w-64 bg-gray-800 border-r border-gray-700 p-4">
-          <div className="bg-gray-700 rounded-lg aspect-video mb-4 flex items-center justify-center relative overflow-hidden">
-            {isVideoOn ? (
-              <>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="absolute inset-0 w-full h-full object-cover"
-                />
-                {cameraError && (
-                  <div className="absolute inset-0 bg-gray-800 flex items-center justify-center p-4">
-                    <p className="text-red-400 text-xs text-center">
-                      {cameraError}
-                    </p>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-gray-500">Video Off</div>
-            )}
-            <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-              You
-            </div>
-            {!isMuted && isListening && (
-              <div className="absolute top-2 right-2 bg-green-500 bg-opacity-80 text-white text-xs px-2 py-1 rounded flex items-center animate-pulse">
-                <Mic className="w-3 h-3" />
-              </div>
-            )}
-          </div>
-
-          <div className="text-white text-sm font-medium mb-2">Controls</div>
-          <div className="space-y-2">
-            {/* Gemini AI Toggle */}
-            <div className="flex items-center justify-between bg-gray-700 p-2 rounded">
-              <div className="flex items-center gap-2">
-                <div className="text-xs text-gray-300">AI Interviewer</div>
-                {isGeminiProcessing && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                )}
-              </div>
-              <Switch
-                checked={useGeminiInterviewer}
-                onCheckedChange={setUseGeminiInterviewer}
-                disabled={isGeminiProcessing}
-              />
-            </div>
-            
-            <Button
-              variant={isMuted ? "destructive" : "outline"}
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => setIsMuted(!isMuted)}
-            >
-              {isMuted ? (
-                <MicOff className="w-4 h-4 mr-2" />
-              ) : (
-                <Mic className="w-4 h-4 mr-2" />
-              )}
-              {isMuted ? "Unmute" : "Mute"}
-            </Button>
-            <Button
-              variant={!isVideoOn ? "destructive" : "outline"}
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => setIsVideoOn(!isVideoOn)}
-            >
+        {/* Left Panel - User Video + Presentation Flow */}
+        <div className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
+          {/* User Video */}
+          <div className="p-4">
+            <div className="bg-gray-700 rounded-lg aspect-video mb-4 flex items-center justify-center relative overflow-hidden">
               {isVideoOn ? (
-                <Video className="w-4 h-4 mr-2" />
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                  {cameraError && (
+                    <div className="absolute inset-0 bg-gray-800 flex items-center justify-center p-4">
+                      <p className="text-red-400 text-xs text-center">
+                        {cameraError}
+                      </p>
+                    </div>
+                  )}
+                </>
               ) : (
-                <VideoOff className="w-4 h-4 mr-2" />
+                <div className="text-gray-500">Video Off</div>
               )}
-              {isVideoOn ? "Stop Video" : "Start Video"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => setShowSettings(true)}
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              Settings
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="w-full justify-start"
-              onClick={handleEndSession}
-            >
-              <Phone className="w-4 h-4 mr-2" />
-              End Session
-            </Button>
+              <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                {scenario.id === 'presentation' ? 'You (Presenter)' : 'You'}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Button
+                variant={isMuted ? "destructive" : "outline"}
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setIsMuted(!isMuted)}
+              >
+                {isMuted ? (
+                  <MicOff className="w-4 h-4 mr-2" />
+                ) : (
+                  <Mic className="w-4 h-4 mr-2" />
+                )}
+                {isMuted ? "Unmute" : "Mute"}
+              </Button>
+              <Button
+                variant={!isVideoOn ? "destructive" : "outline"}
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setIsVideoOn(!isVideoOn)}
+              >
+                {isVideoOn ? (
+                  <Video className="w-4 h-4 mr-2" />
+                ) : (
+                  <VideoOff className="w-4 h-4 mr-2" />
+                )}
+                {isVideoOn ? "Stop Video" : "Start Video"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Settings
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full justify-start"
+                onClick={handleEndSession}
+              >
+                <Phone className="w-4 h-4 mr-2" />
+                End Session
+              </Button>
+            </div>
           </div>
 
-          {micError && (
-            <div className="mt-4 p-2 bg-red-900 bg-opacity-50 rounded text-xs text-red-300">
-              {micError}
+          {/* Presentation Flow for presentation scenario */}
+          {scenario.id === 'presentation' && presentationFlow && (
+            <div className="flex-1 p-4 border-t border-gray-700">
+              <div className="flex items-center mb-3">
+                <Presentation className="w-4 h-4 mr-2 text-gray-300" />
+                <h3 className="text-white text-sm font-semibold">Presentation Flow</h3>
+              </div>
+              <ScrollArea className="h-[calc(100%-2rem)]">
+                <div className="space-y-2">
+                  {getAllSections().map((section, index) => {
+                    const isActive = section.id === currentFlowSection;
+                    const isPassed = getAllSections().findIndex(s => s.id === currentFlowSection) > index;
+                    
+                    return (
+                      <Card 
+                        key={section.id}
+                        className={`cursor-pointer transition-all ${
+                          isActive 
+                            ? 'bg-blue-900 border-blue-600' 
+                            : isPassed
+                            ? 'bg-gray-700 opacity-60'
+                            : 'bg-gray-700 hover:bg-gray-600'
+                        }`}
+                        onClick={() => setCurrentFlowSection(section.id)}
+                      >
+                        <CardHeader className="py-2 px-3">
+                          <div className="flex items-center justify-between">
+                            <CardTitle className={`text-xs ${isActive ? 'text-white' : 'text-gray-300'}`}>
+                              {section.title}
+                            </CardTitle>
+                            {isActive && (
+                              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                            )}
+                            {isPassed && !isActive && (
+                              <Check className="w-3 h-3 text-green-500" />
+                            )}
+                          </div>
+                        </CardHeader>
+                        {isActive && (
+                          <CardContent className="py-2 px-3">
+                            <ul className="text-xs text-gray-300 space-y-1">
+                              {section.goals.map((goal, idx) => (
+                                <li key={idx} className="flex items-start">
+                                  <ChevronRight className="w-3 h-3 mr-1 mt-0.5 flex-shrink-0" />
+                                  <span>{goal}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            {index < getAllSections().length - 1 && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="w-full mt-2 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  advanceToNextSection();
+                                }}
+                              >
+                                Next Section
+                              </Button>
+                            )}
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
             </div>
           )}
 
-          {!speechRecognitionSupported && (
-            <div className="mt-4 p-2 bg-yellow-900 bg-opacity-50 rounded text-xs text-yellow-300">
-              <AlertCircle className="w-3 h-3 inline mr-1" />
-              Browser doesn't support speech recognition
+          {micError && (
+            <div className="p-4">
+              <div className="p-2 bg-red-900 bg-opacity-50 rounded text-xs text-red-300">
+                {micError}
+              </div>
             </div>
           )}
         </div>
@@ -1087,7 +1077,7 @@ export default function PracticePage({ params }: PracticePageProps) {
                   {agent.name}
                 </div>
                 <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                  {agent.personality}
+                  {scenario.id === 'presentation' ? 'Student' : agent.personality}
                 </div>
               </div>
             ))}
@@ -1097,12 +1087,7 @@ export default function PracticePage({ params }: PracticePageProps) {
         {/* Right Panel - Transcript */}
         <div className="w-96 bg-gray-800 border-l border-gray-700 flex flex-col">
           <div className="p-4 border-b border-gray-700">
-            <h2 className="text-white font-semibold">Transcript</h2>
-            {interimTranscript && (
-              <div className="text-xs text-gray-400 mt-1 italic">
-                {interimTranscript}...
-              </div>
-            )}
+            <h2 className="text-white font-semibold">Messages</h2>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -1242,31 +1227,6 @@ export default function PracticePage({ params }: PracticePageProps) {
                       onCheckedChange={setTtsEnabled}
                     />
                   </div>
-                </div>
-              </div>
-
-              {/* Speech Recognition Info */}
-              <div className="border-t pt-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                  Speech Recognition
-                </h3>
-                <div className="bg-blue-50 p-3 rounded-lg">
-                  <p className="text-xs text-gray-700">
-                    {speechRecognitionSupported ? (
-                      <>
-                        <Check className="w-3 h-3 inline mr-1 text-green-600" />
-                        Speech recognition is active and running locally in your
-                        browser. Your speech is automatically transcribed
-                        without any server calls.
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-3 h-3 inline mr-1 text-yellow-600" />
-                        Speech recognition is not supported. Please use Chrome
-                        or Edge browser for this feature.
-                      </>
-                    )}
-                  </p>
                 </div>
               </div>
 

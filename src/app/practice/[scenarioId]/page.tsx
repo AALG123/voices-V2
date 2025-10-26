@@ -41,11 +41,13 @@ import {
   ChevronRight,
   MessageSquare,
   Presentation,
+  BarChart3,
 } from "lucide-react";
 import { formatTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
+import VoiceAnalysis from "@/components/voice-analysis";
 
 interface PracticePageProps {
   params: Promise<{ scenarioId: string }>;
@@ -56,22 +58,14 @@ interface MediaDeviceInfo {
   label: string;
 }
 
-// Browser Speech Recognition types
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
-}
-
-// Hardcoded presentation flow for investment presentation - SHORT 30-second version
+// Hardcoded presentation flow for investment presentation
 const HARDCODED_FLOW: PresentationalFlow = {
   intro: {
     id: "intro",
     title: "Opening: Why Start Now",
     goals: [
-      "I want to show you that $100/month at age 20 becomes $1.1 million at 65",
-      "I want to share three simple steps you can take today"
+      "Show that $100/month at age 20 becomes $1.1 million at 65",
+      "Share three simple steps you can take today"
     ]
   },
   sections: [
@@ -79,16 +73,16 @@ const HARDCODED_FLOW: PresentationalFlow = {
       id: "section-1",
       title: "The Only Three Things You Need",
       goals: [
-        "I want you to know: 1) Open a Roth IRA, 2) Buy index funds (VTI), 3) Automate $50/month",
-        "I want to explain that index funds give you instant diversification with 0.04% fees"
+        "1) Open a Roth IRA, 2) Buy index funds (VTI), 3) Automate $50/month",
+        "Explain that index funds give instant diversification with 0.04% fees"
       ]
     },
     {
-      id: "section-2",
+      id: "section-2", 
       title: "Start Today, Not Tomorrow",
       goals: [
-        "I want to tell you that waiting 10 years costs you half your retirement money",
-        "I want you to download Vanguard app right now and open an account - it takes 5 minutes"
+        "Waiting 10 years costs you half your retirement money",
+        "Download Vanguard app right now - it takes 5 minutes"
       ]
     }
   ],
@@ -96,44 +90,28 @@ const HARDCODED_FLOW: PresentationalFlow = {
     id: "conclusion",
     title: "Your Action Item",
     goals: [
-      "I want you to commit: Open a Roth IRA tonight and invest your first dollar"
+      "Commit: Open a Roth IRA tonight and invest your first dollar"
     ]
   },
   qa: {
     id: "qa",
     title: "Your Questions",
     goals: [
-      "I want to answer all your questions about getting started"
+      "Answer all questions about getting started"
     ]
   }
 };
 
-// Hardcoded investment-specific responses
-const INVESTMENT_RESPONSES = [
-  "That's a great point about diversification. As the document mentions, you should avoid concentrated bets and favor broad index funds.",
-  "Exactly! The core principle is to pay yourself first by automating contributions each payday.",
-  "You're right to focus on expense ratios. Target less than 0.20% for stock index funds and less than 0.10% for bond funds.",
-  "Good question about the emergency fund. The document recommends saving 3-6 months of expenses in a high-yield savings account first.",
-  "The three model portfolios are Conservative 60/40, Balanced 70/30, and Aggressive 90/10 for stocks to bonds ratio.",
-  "For college students, you can start investing with as little as $50 per month. Time in the market beats timing the market.",
-  "The step-by-step plan starts with your 401(k) up to the employer match, then HSA if eligible, then IRA, and finally a taxable brokerage.",
-  "Remember, the rule of thumb is to invest about 15% of gross income for retirement, or 20% if you're starting later.",
-];
-
-// Hardcoded Q&A questions that agents will ask after 30 seconds - ALL UNIQUE
+// Q&A questions for presentation
 const QA_QUESTIONS = [
-  { agentIndex: 0, question: "Can you explain the difference between a 401(k) and an IRA? I'm confused about which one to choose." },
-  { agentIndex: 1, question: "How much money do I actually need to start investing? I only have like $100 saved." },
-  { agentIndex: 2, question: "What exactly are expense ratios and why should I care about them?" },
+  { agentIndex: 0, question: "Can you explain the difference between a 401(k) and an IRA?" },
+  { agentIndex: 1, question: "How much money do I actually need to start investing?" },
+  { agentIndex: 2, question: "What exactly are expense ratios and why should I care?" },
   { agentIndex: 3, question: "Should I pay off my student loans first or start investing now?" },
-  { agentIndex: 0, question: "Is cryptocurrency a good investment for beginners like us?" },
-  { agentIndex: 1, question: "How do I actually open a brokerage account? Can you walk us through the steps?" },
-  { agentIndex: 2, question: "What happens if the stock market crashes right after I invest all my money?" },
-  { agentIndex: 3, question: "Can you explain what dollar-cost averaging means in simple terms?" },
-  { agentIndex: 0, question: "What's the difference between VTI, VXUS, and BND that you mentioned?" },
-  { agentIndex: 1, question: "How often should I check my investment account once I start?" },
-  { agentIndex: 2, question: "Is it better to invest a lump sum or spread it out over time?" },
-  { agentIndex: 3, question: "What if I can only afford to invest $25 a month, is that even worth it?" }
+  { agentIndex: 0, question: "Is cryptocurrency a good investment for beginners?" },
+  { agentIndex: 1, question: "How do I actually open a brokerage account?" },
+  { agentIndex: 2, question: "What happens if the stock market crashes right after I invest?" },
+  { agentIndex: 3, question: "Can you explain dollar-cost averaging in simple terms?" },
 ];
 
 export default function PracticePage({ params }: PracticePageProps) {
@@ -155,6 +133,7 @@ export default function PracticePage({ params }: PracticePageProps) {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [micError, setMicError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showVoiceAnalysis, setShowVoiceAnalysis] = useState(false);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string>("");
@@ -171,20 +150,12 @@ export default function PracticePage({ params }: PracticePageProps) {
   const [presentationFlow, setPresentationFlow] = useState<PresentationalFlow | null>(null);
   const [qaStartTime, setQaStartTime] = useState<number | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [hardcodedResponseIndex, setHardcodedResponseIndex] = useState(0);
   
-  // TTS State
+  // TTS State - Always enabled for presentation
   const [ttsEnabled, setTtsEnabled] = useState(() => {
     const saved = localStorage.getItem("tts-enabled");
     return saved ? JSON.parse(saved) : true;
   });
-
-  // Speech Recognition State - Disabled for presentation
-  const [isListening, setIsListening] = useState(false);
-  const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(false);
-  const [interimTranscript, setInterimTranscript] = useState("");
-  const [fullTranscript, setFullTranscript] = useState("");
-  const [userSpeechBuffer, setUserSpeechBuffer] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentResponseTimers = useRef<NodeJS.Timeout[]>([]);
@@ -192,84 +163,38 @@ export default function PracticePage({ params }: PracticePageProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoStreamRef = useRef<MediaStream | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
-  const recognitionRef = useRef<any>(null);
-  const lastTranscriptTimeRef = useRef<number>(Date.now());
   const qaTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update TTS service when enabled state changes
+  // Force TTS on for presentation scenario
   useEffect(() => {
-    ttsService.setEnabled(ttsEnabled);
-    localStorage.setItem("tts-enabled", JSON.stringify(ttsEnabled));
-  }, [ttsEnabled]);
+    if (scenario?.id === 'presentation') {
+      ttsService.setEnabled(true);
+      setTtsEnabled(true);
+      console.log('[Setup] TTS force-enabled for presentation');
+    } else {
+      ttsService.setEnabled(ttsEnabled);
+      localStorage.setItem("tts-enabled", JSON.stringify(ttsEnabled));
+    }
+  }, [ttsEnabled, scenario?.id]);
 
-  // Check for Speech Recognition support - DISABLED for presentation demo
+  // Set presentation flow
   useEffect(() => {
-    // Speech recognition disabled for presentation demo
-    setSpeechRecognitionSupported(false);
-  }, []);
-
-  // Initialize Speech Recognition - DISABLED for presentation demo
-  const initializeSpeechRecognition = () => {
-    return null; // Speech recognition disabled
-  };
-
-  const startListening = () => {
-    // Speech recognition disabled for presentation demo
-  };
-
-  const stopListening = () => {
-    // Speech recognition disabled for presentation demo
-  };
-
-  // Generate hardcoded response for presentation scenario
-  const generateHardcodedResponse = () => {
-    if (!agents.length || sessionEnded) return;
-    
-    // Select a random agent
-    const agent = agents[Math.floor(Math.random() * agents.length)];
-    
-    // Get next hardcoded response
-    const response = INVESTMENT_RESPONSES[hardcodedResponseIndex % INVESTMENT_RESPONSES.length];
-    setHardcodedResponseIndex(prev => prev + 1);
-    
-    // Add slight delay for natural conversation
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: `msg-${Date.now()}-${Math.random()}`,
-        agentId: agent.id,
-        agentName: agent.name,
-        content: response,
-        timestamp: new Date(),
-        isUser: false,
-      };
-
-      setMessages((prev) => [...prev, aiMessage]);
-
-      // Queue TTS for agent message
-      if (ttsService.isEnabled()) {
-        ttsService.queueSpeech({
-          text: response,
-          agentName: agent.name,
-          messageId: aiMessage.id,
-          voiceId: agent.voiceId,
-        });
-      }
-    }, 2000);
-  };
+    if (scenario?.id === 'presentation') {
+      setPresentationFlow(HARDCODED_FLOW);
+    }
+  }, [scenario]);
 
   // Start Q&A session after 30 seconds for presentation
   useEffect(() => {
-    // Debug logging
-    if (scenario?.id === 'presentation') {
-      console.log(`[Q&A Debug] Time: ${timeElapsed}s, QA Started: ${!!qaStartTime}, Agents: ${agents.length}, Question Index: ${currentQuestionIndex}`);
-    }
-    
     if (scenario?.id === 'presentation' && timeElapsed === 30 && !qaStartTime && agents.length > 0 && !sessionEnded) {
       console.log('[Q&A] Starting Q&A session at 30 seconds');
+      console.log('[Q&A] Available agents:', agents.map(a => `${a.name} (${a.voiceId})`));
       setQaStartTime(timeElapsed);
       setCurrentFlowSection("qa");
       
-      // Immediately ask first question
+      // Force enable TTS for Q&A
+      ttsService.setEnabled(true);
+      
       const askQuestion = (index: number) => {
         if (index >= QA_QUESTIONS.length || sessionEnded) {
           console.log('[Q&A] Session complete or ended');
@@ -284,7 +209,7 @@ export default function PracticePage({ params }: PracticePageProps) {
           return;
         }
         
-        console.log(`[Q&A] Agent ${agent.name} asking question ${index + 1}/${QA_QUESTIONS.length}`);
+        console.log(`[Q&A] Agent ${agent.name} (voice: ${agent.voiceId}) asking question ${index + 1}/${QA_QUESTIONS.length}`);
         
         const questionMessage: Message = {
           id: `qa-${Date.now()}-${index}`,
@@ -297,30 +222,36 @@ export default function PracticePage({ params }: PracticePageProps) {
 
         setMessages((prev) => [...prev, questionMessage]);
         
-        // Queue TTS for question
-        if (ttsEnabled) {
-          console.log(`[TTS] Queueing speech for ${agent.name}`);
-          ttsService.queueSpeech({
-            text: qa.question,
-            agentName: agent.name,
-            messageId: questionMessage.id,
-            voiceId: agent.voiceId || 'b5f4515fd395410b9ed3aef6fa51d9a0',
-          });
-        }
+        // Always queue TTS for presentation Q&A
+        console.log(`[TTS] Queueing speech for ${agent.name} with voice ${agent.voiceId}`);
+        ttsService.queueSpeech({
+          text: qa.question,
+          agentName: agent.name,
+          messageId: questionMessage.id,
+          voiceId: agent.voiceId || 'b5f4515fd395410b9ed3aef6fa51d9a0',
+        });
         
-        // Schedule next question
+        // Schedule next question with longer delay
         const nextIndex = index + 1;
-        if (nextIndex < QA_QUESTIONS.length) {
-          const delay = 6000 + Math.random() * 4000;
-          console.log(`[Q&A] Next question in ${delay/1000} seconds`);
-          qaTimerRef.current = setTimeout(() => askQuestion(nextIndex), delay);
+        if (nextIndex < QA_QUESTIONS.length && !sessionEnded) {
+          const delay = 8000 + Math.random() * 4000; // 8-12 seconds
+          console.log(`[Q&A] Next question scheduled in ${delay/1000} seconds`);
+          qaTimerRef.current = setTimeout(() => {
+            if (!sessionEnded) {
+              askQuestion(nextIndex);
+            }
+          }, delay);
         }
       };
       
-      // Start with first question after 1 second
-      setTimeout(() => askQuestion(0), 1000);
+      // Start with first question after 2 seconds
+      setTimeout(() => {
+        if (!sessionEnded) {
+          askQuestion(0);
+        }
+      }, 2000);
     }
-  }, [timeElapsed, qaStartTime, agents, sessionEnded, scenario?.id, ttsEnabled]);
+  }, [timeElapsed, qaStartTime, agents, sessionEnded, scenario?.id]);
 
   // Clean up Q&A timer
   useEffect(() => {
@@ -332,7 +263,7 @@ export default function PracticePage({ params }: PracticePageProps) {
     };
   }, []);
 
-  // Load custom time limit from setup
+  // Load configuration
   const hasLoadedCustomConfigRef = useRef(false);
   useEffect(() => {
     if (!scenario) return;
@@ -350,11 +281,11 @@ export default function PracticePage({ params }: PracticePageProps) {
         localStorage.removeItem(key);
       }
     } catch {
-      // Ignore malformed config
+      // Ignore
     }
   }, [scenario]);
 
-  // Load agent prompt context from setup
+  // Load context
   useEffect(() => {
     if (!scenario) return;
     try {
@@ -377,14 +308,7 @@ export default function PracticePage({ params }: PracticePageProps) {
         localStorage.removeItem(ctxKey);
       }
     } catch {
-      // ignore malformed context
-    }
-  }, [scenario]);
-
-  // Set presentation flow for presentation scenario
-  useEffect(() => {
-    if (scenario?.id === 'presentation') {
-      setPresentationFlow(HARDCODED_FLOW);
+      // ignore
     }
   }, [scenario]);
 
@@ -392,7 +316,6 @@ export default function PracticePage({ params }: PracticePageProps) {
   const enumerateDevices = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-
       const videoInputs = devices
         .filter((device) => device.kind === "videoinput")
         .map((device) => ({
@@ -420,25 +343,21 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   };
 
-  // Initialize camera stream
+  // Initialize camera
   const startCamera = async (deviceId?: string) => {
     try {
       if (videoStreamRef.current) {
         videoStreamRef.current.getTracks().forEach((track) => track.stop());
       }
-
       const constraints: MediaStreamConstraints = {
         video: deviceId ? { deviceId: { exact: deviceId } } : true,
         audio: false,
       };
-
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       videoStreamRef.current = stream;
-
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
-
       setCameraError(null);
       await enumerateDevices();
     } catch (error) {
@@ -447,25 +366,21 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   };
 
-  // Initialize microphone stream
+  // Initialize microphone
   const startMicrophone = async (deviceId?: string) => {
     try {
       if (audioStreamRef.current) {
         audioStreamRef.current.getTracks().forEach((track) => track.stop());
       }
-
       const constraints: MediaStreamConstraints = {
         video: false,
         audio: deviceId ? { deviceId: { exact: deviceId } } : true,
       };
-
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       audioStreamRef.current = stream;
-
       stream.getAudioTracks().forEach((track) => {
         track.enabled = !isMuted;
       });
-
       setMicError(null);
       await enumerateDevices();
     } catch (error) {
@@ -482,9 +397,7 @@ export default function PracticePage({ params }: PracticePageProps) {
       }
       await startMicrophone();
     };
-    
     initMedia();
-
     return () => {
       if (videoStreamRef.current) {
         videoStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -521,7 +434,7 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   }, [isMuted]);
 
-  // Handle video device change
+  // Handle device changes
   const handleVideoDeviceChange = async (deviceId: string) => {
     setSelectedVideoDeviceId(deviceId);
     if (isVideoOn) {
@@ -529,32 +442,29 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   };
 
-  // Handle audio device change
   const handleAudioDeviceChange = async (deviceId: string) => {
     setSelectedAudioDeviceId(deviceId);
     await startMicrophone(deviceId);
   };
 
+  // Initialize scenario
   useEffect(() => {
     if (!scenario) return;
 
-    // Generate agents first
     const generatedAgents = generateAgents(scenario);
     setAgents(generatedAgents);
-    console.log(`[Setup] Generated ${generatedAgents.length} agents for ${scenario.id}`);
+    console.log(`[Setup] Generated ${generatedAgents.length} agents for ${scenario.id}:`);
+    generatedAgents.forEach(agent => {
+      console.log(`  - ${agent.name}: voiceId=${agent.voiceId}`);
+    });
     
-    // Make sure TTS is enabled for presentation
     if (scenario.id === 'presentation') {
-      setTtsEnabled(true);
+      // Force enable TTS
       ttsService.setEnabled(true);
-      console.log('[Setup] TTS enabled for presentation');
-    }
-
-    // Initial greeting for presentation
-    if (scenario.id === 'presentation') {
+      setTtsEnabled(true);
+      
       setTimeout(() => {
         const welcomeMessage = "Welcome everyone! Let me show you why starting to invest now will change your life. Just $100 a month at age 20 becomes 1.1 million dollars at retirement!";
-        
         const userMessage: Message = {
           id: `msg-${Date.now()}`,
           agentId: "user",
@@ -563,11 +473,8 @@ export default function PracticePage({ params }: PracticePageProps) {
           timestamp: new Date(),
           isUser: true,
         };
-        
         setMessages([userMessage]);
-        
-        console.log('[Setup] Presentation started. Timer starting. Q&A will begin at 30 seconds.');
-        console.log(`[Setup] Agents available: ${generatedAgents.map(a => a.name).join(', ')}`);
+        console.log('[Setup] Presentation started. Q&A begins at 30 seconds.');
       }, 2000);
     } else {
       // Original behavior for other scenarios
@@ -575,7 +482,6 @@ export default function PracticePage({ params }: PracticePageProps) {
         const welcomeMessage = generatedAgents[0]?.emotionPrefix
           ? `${generatedAgents[0].emotionPrefix} Hello! Welcome to the session. Feel free to introduce yourself!`
           : "Hello! Welcome to the session. Feel free to introduce yourself!";
-
         if (generatedAgents[0]) {
           addAgentMessage(generatedAgents[0], welcomeMessage);
           setConvState((prev) =>
@@ -586,36 +492,29 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   }, [scenario]);
 
-  const effectiveDuration =
-    customDurationSec !== null ? customDurationSec : scenario?.duration ?? 0;
+  const effectiveDuration = customDurationSec !== null ? customDurationSec : scenario?.duration ?? 0;
 
+  // Timer
   useEffect(() => {
     if (!isActive || sessionEnded) return;
-
     const timer = setInterval(() => {
       setTimeElapsed((prev) => {
         const newTime = prev + 1;
-        
-        // Debug log for presentation
         if (scenario?.id === 'presentation' && (newTime === 10 || newTime === 20 || newTime === 25 || newTime === 30)) {
           console.log(`[Timer] ${newTime} seconds elapsed`);
         }
-        
         if (effectiveDuration > 0 && newTime >= effectiveDuration) {
           handleEndSession();
         }
         return newTime;
       });
     }, 1000);
-
-    console.log('[Timer] Started');
-
     return () => {
       clearInterval(timer);
-      console.log('[Timer] Stopped');
     };
   }, [isActive, sessionEnded, effectiveDuration, scenario?.id]);
 
+  // Auto-scroll messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -631,8 +530,8 @@ export default function PracticePage({ params }: PracticePageProps) {
     };
     setMessages((prev) => [...prev, newMessage]);
 
-    // Queue TTS for agent message
-    if (ttsService.isEnabled()) {
+    // Queue TTS
+    if (ttsService.isEnabled() || scenario?.id === 'presentation') {
       ttsService.queueSpeech({
         text: content,
         agentName: agent.name,
@@ -642,9 +541,7 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   };
 
-  const scheduleAgentResponse = (
-    stateSnapshot?: ReturnType<typeof initConversationState>
-  ) => {
+  const scheduleAgentResponse = (stateSnapshot?: ReturnType<typeof initConversationState>) => {
     if (!scenario || agents.length === 0 || sessionEnded) return;
     const snapshot = stateSnapshot ?? convState;
     if (!canGenerateAgentResponse(snapshot)) return;
@@ -652,12 +549,7 @@ export default function PracticePage({ params }: PracticePageProps) {
     scheduledTurnRef.current = snapshot.turnIndex;
 
     const delay = getResponseDelay(difficulty);
-    const selected = selectAgentToSpeak(
-      messages,
-      scenario,
-      agents,
-      "active-host"
-    );
+    const selected = selectAgentToSpeak(messages, scenario, agents, "active-host");
     if (!selected) {
       scheduledTurnRef.current = null;
       return;
@@ -695,7 +587,6 @@ export default function PracticePage({ params }: PracticePageProps) {
 
   const handleSendMessage = () => {
     if (!userInput.trim()) return;
-
     const userMessage: Message = {
       id: `msg-${Date.now()}`,
       agentId: "user",
@@ -704,13 +595,10 @@ export default function PracticePage({ params }: PracticePageProps) {
       timestamp: new Date(),
       isUser: true,
     };
-
     setMessages((prev) => [...prev, userMessage]);
     setUserInput("");
     
-    if (scenario?.id === 'presentation') {
-      generateHardcodedResponse();
-    } else {
+    if (scenario?.id !== 'presentation') {
       setConvState((prev) => {
         const next = updateStateOnUserMessage(prev);
         if (agents.length > 0 && !sessionEnded) scheduleAgentResponse(next);
@@ -722,14 +610,11 @@ export default function PracticePage({ params }: PracticePageProps) {
   const handleEndSession = () => {
     setIsActive(false);
     setSessionEnded(true);
-
     agentResponseTimers.current.forEach((timer) => clearTimeout(timer));
     agentResponseTimers.current = [];
-
     if (qaTimerRef.current) {
       clearTimeout(qaTimerRef.current);
     }
-
     ttsService.stopAll();
 
     const userMessages = messages.filter((m) => m.isUser).length;
@@ -737,20 +622,22 @@ export default function PracticePage({ params }: PracticePageProps) {
     setFinalScore(score);
 
     // Save session
-    const sessions = JSON.parse(
-      localStorage.getItem("practice-sessions") || "[]"
-    );
+    const sessions = JSON.parse(localStorage.getItem("practice-sessions") || "[]");
     sessions.push({
       scenarioId: scenario?.id,
       date: new Date().toISOString(),
       score,
       duration: timeElapsed,
       difficulty,
-      transcript: fullTranscript.trim() || userSpeechBuffer.trim() || null,
     });
     localStorage.setItem("practice-sessions", JSON.stringify(sessions));
 
-    // Clean up media streams
+    // Show voice analysis after a short delay
+    setTimeout(() => {
+      setShowVoiceAnalysis(true);
+    }, 1500);
+
+    // Clean up media
     if (videoStreamRef.current) {
       videoStreamRef.current.getTracks().forEach((track) => track.stop());
     }
@@ -766,7 +653,7 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   };
 
-  // Function to get all sections for navigation
+  // Get all flow sections
   const getAllSections = (): FlowSection[] => {
     if (!presentationFlow) return [];
     return [
@@ -777,7 +664,7 @@ export default function PracticePage({ params }: PracticePageProps) {
     ];
   };
 
-  // Function to advance to next section
+  // Advance flow section
   const advanceToNextSection = () => {
     const allSections = getAllSections();
     const currentIndex = allSections.findIndex(s => s.id === currentFlowSection);
@@ -799,51 +686,20 @@ export default function PracticePage({ params }: PracticePageProps) {
     );
   }
 
-  if (sessionEnded) {
+  if (sessionEnded && showVoiceAnalysis) {
+    return <VoiceAnalysis sessionId={scenario.id} scenarioTitle={scenario.title} duration={timeElapsed} />;
+  }
+
+  if (sessionEnded && !showVoiceAnalysis) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full text-center">
           <div className="text-6xl mb-4">🎉</div>
           <h1 className="text-3xl font-bold mb-2">Session Complete!</h1>
           <p className="text-gray-600 mb-6">
-            Great job practicing your public speaking skills
+            Analyzing your voice performance...
           </p>
-
-          <div className="bg-blue-50 rounded-lg p-6 mb-6">
-            <div className="text-5xl font-bold text-blue-600 mb-2">
-              {finalScore}
-            </div>
-            <div className="text-sm text-gray-600">Your Score</div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
-            <div className="bg-gray-50 rounded p-3">
-              <div className="font-semibold">{formatTime(timeElapsed)}</div>
-              <div className="text-gray-600">Duration</div>
-            </div>
-            <div className="bg-gray-50 rounded p-3">
-              <div className="font-semibold">
-                {messages.filter((m) => m.isUser).length}
-              </div>
-              <div className="text-gray-600">Your Messages</div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Button
-              className="w-full"
-              onClick={() => router.push(`/practice/${scenario.id}`)}
-            >
-              Practice Again
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push("/scenarios")}
-            >
-              Choose Another Scenario
-            </Button>
-          </div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
         </div>
       </div>
     );
@@ -897,14 +753,14 @@ export default function PracticePage({ params }: PracticePageProps) {
           )}
           <div className="flex items-center">
             <UsersIcon className="w-4 h-4 mr-2" />
-            {agents.length} students + you
+            {agents.length} {scenario.id === 'presentation' ? 'students' : 'participants'}
           </div>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - User Video + Presentation Flow */}
+        {/* Left Panel */}
         <div className="w-80 bg-gray-800 border-r border-gray-700 flex flex-col">
           {/* User Video */}
           <div className="p-4">
@@ -920,9 +776,7 @@ export default function PracticePage({ params }: PracticePageProps) {
                   />
                   {cameraError && (
                     <div className="absolute inset-0 bg-gray-800 flex items-center justify-center p-4">
-                      <p className="text-red-400 text-xs text-center">
-                        {cameraError}
-                      </p>
+                      <p className="text-red-400 text-xs text-center">{cameraError}</p>
                     </div>
                   )}
                 </>
@@ -982,7 +836,7 @@ export default function PracticePage({ params }: PracticePageProps) {
             </div>
           </div>
 
-          {/* Presentation Flow for presentation scenario */}
+          {/* Presentation Flow */}
           {scenario.id === 'presentation' && presentationFlow && (
             <div className="flex-1 p-4 border-t border-gray-700">
               <div className="flex items-center mb-3">
@@ -1156,7 +1010,7 @@ export default function PracticePage({ params }: PracticePageProps) {
 
           <div className="flex-1 overflow-y-auto pr-2">
             <div className="space-y-6 mt-4">
-              {/* Session Settings Section */}
+              {/* Session Settings */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">
                   Session Settings
@@ -1167,8 +1021,7 @@ export default function PracticePage({ params }: PracticePageProps) {
                       Difficulty Level
                     </label>
                     <p className="text-xs text-gray-500 mb-3">
-                      Controls how frequently AI agents respond during the
-                      session
+                      Controls how frequently AI agents respond
                     </p>
                     <div className="grid grid-cols-3 gap-3">
                       {(["easy", "medium", "hard"] as DifficultyLevel[]).map(
@@ -1203,7 +1056,7 @@ export default function PracticePage({ params }: PracticePageProps) {
                 </div>
               </div>
 
-              {/* TTS Settings Section */}
+              {/* TTS Settings */}
               <div className="border-t pt-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">
                   Text-to-Speech Settings
@@ -1218,19 +1071,21 @@ export default function PracticePage({ params }: PracticePageProps) {
                         Enable TTS for Agent Messages
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        AI agents will speak their messages using text-to-speech
+                        AI agents will speak their messages
+                        {scenario.id === 'presentation' && ' (Always on for presentations)'}
                       </p>
                     </div>
                     <Switch
                       id="tts-enabled"
-                      checked={ttsEnabled}
-                      onCheckedChange={setTtsEnabled}
+                      checked={scenario.id === 'presentation' ? true : ttsEnabled}
+                      onCheckedChange={scenario.id === 'presentation' ? undefined : setTtsEnabled}
+                      disabled={scenario.id === 'presentation'}
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Audio Settings Section */}
+              {/* Audio Settings */}
               <div className="border-t pt-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">
                   Audio Settings
@@ -1239,9 +1094,6 @@ export default function PracticePage({ params }: PracticePageProps) {
                   <label className="text-sm font-medium text-gray-700 mb-2 block">
                     Microphone Source
                   </label>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Select which microphone to use for audio input
-                  </p>
                   <div className="space-y-2">
                     {audioDevices.length === 0 ? (
                       <p className="text-sm text-gray-500 py-4 text-center bg-gray-50 rounded-lg">
@@ -1251,9 +1103,7 @@ export default function PracticePage({ params }: PracticePageProps) {
                       audioDevices.map((device) => (
                         <button
                           key={device.deviceId}
-                          onClick={() =>
-                            handleAudioDeviceChange(device.deviceId)
-                          }
+                          onClick={() => handleAudioDeviceChange(device.deviceId)}
                           className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
                             selectedAudioDeviceId === device.deviceId
                               ? "border-blue-600 bg-blue-50"
@@ -1275,7 +1125,7 @@ export default function PracticePage({ params }: PracticePageProps) {
                 </div>
               </div>
 
-              {/* Video Settings Section */}
+              {/* Video Settings */}
               <div className="border-t pt-6">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">
                   Video Settings
@@ -1284,9 +1134,6 @@ export default function PracticePage({ params }: PracticePageProps) {
                   <label className="text-sm font-medium text-gray-700 mb-2 block">
                     Camera Source
                   </label>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Select which camera to use for video
-                  </p>
                   <div className="space-y-2">
                     {videoDevices.length === 0 ? (
                       <p className="text-sm text-gray-500 py-4 text-center bg-gray-50 rounded-lg">
@@ -1296,9 +1143,7 @@ export default function PracticePage({ params }: PracticePageProps) {
                       videoDevices.map((device) => (
                         <button
                           key={device.deviceId}
-                          onClick={() =>
-                            handleVideoDeviceChange(device.deviceId)
-                          }
+                          onClick={() => handleVideoDeviceChange(device.deviceId)}
                           className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
                             selectedVideoDeviceId === device.deviceId
                               ? "border-blue-600 bg-blue-50"

@@ -323,8 +323,23 @@ export default function InterviewPracticePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gray-900 p-4 md:p-8 relative overflow-hidden">
+      {/* Video Background */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover opacity-30 z-0"
+      >
+        <source src="/assets/animated-backdrop.webm" type="video/webm" />
+      </video>
+      
+      {/* Overlay to darken video */}
+      <div className="absolute inset-0 bg-gray-900/70 z-0"></div>
+      
+      {/* Content - needs higher z-index */}
+      <div className="relative z-10 max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -332,24 +347,25 @@ export default function InterviewPracticePage() {
               variant="ghost"
               size="icon"
               onClick={() => router.push('/')}
+              className="text-gray-300 hover:text-white"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">AI Interview Practice</h1>
-              <p className="text-gray-600 mt-1">Practice with an AI interviewer using voice</p>
+              <h1 className="text-3xl font-bold text-white">AI Interview Practice</h1>
+              <p className="text-gray-400 mt-1">Practice with an AI interviewer using voice</p>
             </div>
           </div>
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <VolumeX className="w-4 h-4 text-gray-600" />
+              <VolumeX className="w-4 h-4 text-gray-400" />
               <Switch
                 checked={ttsEnabled}
                 onCheckedChange={setTtsEnabled}
               />
-              <Volume2 className="w-4 h-4 text-gray-600" />
-              <span className="text-sm text-gray-600">Voice</span>
+              <Volume2 className="w-4 h-4 text-gray-400" />
+              <span className="text-sm text-gray-300">Voice</span>
             </div>
           </div>
         </div>
@@ -357,10 +373,10 @@ export default function InterviewPracticePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Panel - Controls */}
           <div className="lg:col-span-1 space-y-4">
-            <Card>
+            <Card className="bg-gray-800 border-gray-700">
               <CardHeader>
-                <CardTitle>Session Controls</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-white">Session Controls</CardTitle>
+                <CardDescription className="text-gray-400">
                   Start speaking to begin the interview
                 </CardDescription>
               </CardHeader>
@@ -397,9 +413,9 @@ export default function InterviewPracticePage() {
                 )}
 
                 {/* Status Indicators */}
-                <div className="space-y-2 pt-4 border-t">
+                <div className="space-y-2 pt-4 border-t border-gray-700">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Microphone</span>
+                    <span className="text-sm text-gray-300">Microphone</span>
                     <div className="flex items-center gap-2">
                       {isListening ? (
                         <>
@@ -416,7 +432,7 @@ export default function InterviewPracticePage() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">AI Status</span>
+                    <span className="text-sm text-gray-300">AI Status</span>
                     <div className="flex items-center gap-2">
                       {isProcessing ? (
                         <>
@@ -435,33 +451,33 @@ export default function InterviewPracticePage() {
 
                 {/* Interim Transcript */}
                 {interimTranscript && (
-                  <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-                    <Label className="text-xs text-gray-600">Listening...</Label>
-                    <p className="text-sm text-gray-800 italic mt-1">{interimTranscript}</p>
+                  <div className="mt-4 p-3 bg-blue-900 bg-opacity-50 rounded-lg">
+                    <Label className="text-xs text-blue-300">Listening...</Label>
+                    <p className="text-sm text-blue-100 italic mt-1">{interimTranscript}</p>
                   </div>
                 )}
 
                 {/* Error Display */}
                 {speechError && (
-                  <div className="mt-4 p-3 bg-red-50 rounded-lg flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
-                    <p className="text-sm text-red-800">{speechError}</p>
+                  <div className="mt-4 p-3 bg-red-900 bg-opacity-50 rounded-lg flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-400 mt-0.5" />
+                    <p className="text-sm text-red-300">{speechError}</p>
                   </div>
                 )}
               </CardContent>
             </Card>
 
             {/* Custom System Prompt */}
-            <Card>
+            <Card className="bg-gray-800 border-gray-700">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Custom Instructions</CardTitle>
+                  <CardTitle className="text-lg text-white">Custom Instructions</CardTitle>
                   <Switch
                     checked={useCustomPrompt}
                     onCheckedChange={setUseCustomPrompt}
                   />
                 </div>
-                <CardDescription>
+                <CardDescription className="text-gray-400">
                   Customize the interviewer's behavior
                 </CardDescription>
               </CardHeader>
@@ -472,7 +488,7 @@ export default function InterviewPracticePage() {
                   placeholder="E.g., You are interviewing for a senior software engineer position. Focus on system design and leadership experience..."
                   disabled={!useCustomPrompt || sessionActive}
                   rows={6}
-                  className="text-sm"
+                  className="text-sm bg-gray-700 text-white border-gray-600 placeholder:text-gray-400"
                 />
               </CardContent>
             </Card>
@@ -480,23 +496,23 @@ export default function InterviewPracticePage() {
 
           {/* Right Panel - Conversation */}
           <div className="lg:col-span-2">
-            <Card className="h-[calc(100vh-12rem)]">
+            <Card className="h-[calc(100vh-12rem)] bg-gray-800 border-gray-700">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <MessageSquare className="w-5 h-5" />
-                    <CardTitle>Conversation</CardTitle>
+                    <MessageSquare className="w-5 h-5 text-gray-300" />
+                    <CardTitle className="text-white">Conversation</CardTitle>
                   </div>
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-400">
                     {messages.length} messages
                   </span>
                 </div>
               </CardHeader>
               <CardContent className="h-[calc(100%-5rem)] overflow-y-auto">
                 {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
-                    <Bot className="w-16 h-16 mb-4 text-gray-300" />
-                    <p className="text-lg font-medium">Ready to start your interview?</p>
+                  <div className="flex flex-col items-center justify-center h-full text-center text-gray-400">
+                    <Bot className="w-16 h-16 mb-4 text-gray-600" />
+                    <p className="text-lg font-medium text-gray-300">Ready to start your interview?</p>
                     <p className="text-sm mt-2">Click "Start Interview" to begin</p>
                   </div>
                 ) : (
@@ -510,8 +526,8 @@ export default function InterviewPracticePage() {
                       >
                         {message.role === 'assistant' && (
                           <div className="flex-shrink-0">
-                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-                              <Bot className="w-5 h-5 text-indigo-600" />
+                            <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center">
+                              <Bot className="w-5 h-5 text-gray-300" />
                             </div>
                           </div>
                         )}
@@ -520,12 +536,12 @@ export default function InterviewPracticePage() {
                           className={`max-w-[80%] rounded-lg p-4 ${
                             message.role === 'user'
                               ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-900'
+                              : 'bg-gray-700 text-gray-100'
                           }`}
                         >
                           <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                           <p className={`text-xs mt-2 ${
-                            message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
+                            message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
                           }`}>
                             {message.timestamp.toLocaleTimeString()}
                           </p>
@@ -533,8 +549,8 @@ export default function InterviewPracticePage() {
 
                         {message.role === 'user' && (
                           <div className="flex-shrink-0">
-                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                              <User className="w-5 h-5 text-blue-600" />
+                            <div className="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center">
+                              <User className="w-5 h-5 text-blue-300" />
                             </div>
                           </div>
                         )}

@@ -11,11 +11,15 @@ export interface TTSQueueItem {
   agentName: string;
 }
 
+type SpeakingCallback = (agentName: string | null) => void;
+
 class TTSService {
   private audioQueue: TTSQueueItem[] = [];
   private isPlaying: boolean = false;
   private currentAudio: HTMLAudioElement | null = null;
   private enabled: boolean = true;
+  private currentSpeaker: string | null = null;
+  private speakingCallbacks: Set<SpeakingCallback> = new Set();
 
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
@@ -23,6 +27,23 @@ class TTSService {
 
   isEnabled(): boolean {
     return this.enabled;
+  }
+
+  onSpeakingChange(callback: SpeakingCallback): () => void {
+    this.speakingCallbacks.add(callback);
+    // Return unsubscribe function
+    return () => {
+      this.speakingCallbacks.delete(callback);
+    };
+  }
+
+  private notifySpeakingChange(agentName: string | null): void {
+    this.currentSpeaker = agentName;
+    this.speakingCallbacks.forEach(callback => callback(agentName));
+  }
+
+  getCurrentSpeaker(): string | null {
+    return this.currentSpeaker;
   }
 
   async generateSpeech(request: TTSRequest): Promise<HTMLAudioElement | null> {
@@ -93,6 +114,7 @@ class TTSService {
     if (this.audioQueue.length === 0) {
       this.isPlaying = false;
       this.currentAudio = null;
+      this.notifySpeakingChange(null);
       return;
     }
 
@@ -101,6 +123,9 @@ class TTSService {
     this.currentAudio = queueItem.audio;
 
     console.log(`Playing TTS for ${queueItem.agentName}: ${queueItem.messageId}`);
+    
+    // Notify that this agent is now speaking
+    this.notifySpeakingChange(queueItem.agentName);
 
     // Set up event listeners
     queueItem.audio.addEventListener('ended', () => {
@@ -135,6 +160,7 @@ class TTSService {
     
     this.audioQueue = [];
     this.isPlaying = false;
+    this.notifySpeakingChange(null);
   }
 
   skipCurrent(): void {

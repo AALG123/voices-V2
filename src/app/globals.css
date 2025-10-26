@@ -8,6 +8,40 @@
   }
   
   body {
-    @apply bg-white text-gray-900;
+    @apply bg-black text-gray-900;
   }
+  /* scrollbar css */
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+      background-color: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+      background-color: #505050;
+      border-radius: 20px;
+  }
+
+  :-webkit-scrollbar-thumb:hover {
+      background-color: #454545 !important;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-word {
+  display: inline-block;
+  opacity: 0;
+  animation: fadeInUp 0.6s ease-out forwards;
 }

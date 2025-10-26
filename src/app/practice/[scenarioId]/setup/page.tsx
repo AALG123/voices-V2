@@ -12,22 +12,23 @@ import { ArrowLeft, Clock, Users, FileText, Image, Presentation, ChevronUp, Chev
 import { getScenarioById } from "@/lib/scenarios";
 import type { PresentationalFlow, FlowSection } from "@/types";
 import { Slider } from "@/components/ui/slider";
+import { IntroFade } from "@/components/IntroFade";
 
 function SectionEditor({ section, onChange }: { section: FlowSection; onChange: (next: FlowSection) => void }) {
   return (
     <div className="space-y-3">
       <div>
-        <Label className="text-xs text-gray-600">Title</Label>
+        <Label className="text-xs text-gray-400">Title</Label>
         <Input
           value={section.title}
           onChange={(e) => onChange({ ...section, title: e.target.value })}
           placeholder="Section title"
-          className="mt-1"
+          className="mt-1 bg-gray-950 text-white border-gray-600"
         />
       </div>
       <div>
         <div className="flex items-center justify-between">
-          <Label className="text-xs text-gray-600">Goals</Label>
+          <Label className="text-xs text-gray-400">Goals</Label>
           <Button
             type="button"
             size="sm"
@@ -83,6 +84,7 @@ function SectionEditor({ section, onChange }: { section: FlowSection; onChange: 
                     onChange({ ...section, goals: next });
                   }}
                   placeholder={`Goal ${idx + 1}`}
+                  className="bg-gray-950 text-white border-gray-600"
                 />
               </div>
               <div>
@@ -102,7 +104,7 @@ function SectionEditor({ section, onChange }: { section: FlowSection; onChange: 
             </div>
           ))}
           {section.goals.length === 0 && (
-            <div className="text-xs text-gray-500">No goals yet. Add one to get started.</div>
+            <div className="text-xs text-gray-400">No goals yet. Add one to get started.</div>
           )}
         </div>
       </div>
@@ -521,33 +523,49 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br bg-black overflow-hidden relative">
+      
+      {/* Video Background */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover opacity-50"
+      >
+        <source src="/assets/animated-backdrop.webm" type="video/mp4" />
+      </video>
+
+      {/* Overlay to darken video */}
+      <div className="absolute inset-0 bg-slate-900/50"></div>
+
+      {/* Content */}
+      <div className="container mx-auto px-4 py-8 relative z-10">
         {/* Header */}
         <div className="mb-8">
           <Link href="/scenarios">
-            <Button variant="ghost" className="mb-4">
+            <Button variant="ghost" className="mb-4 text-gray-300 hover:text-white hover:bg-gray-800">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Scenarios
             </Button>
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Setup: {scenario.title}</h1>
-          <p className="text-gray-600">Configure your session before starting practice</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Setup: {scenario.title}</h1>
+          <p className="text-gray-400">Configure your session before starting practice</p>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Left: Form */}
-          <Card className="lg:col-span-2">
+          <Card className="lg:col-span-2 bg-gray-800 border-gray-700">
             <CardHeader>
-              <CardTitle>Context and Preferences</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-white">Context and Preferences</CardTitle>
+              <CardDescription className="text-gray-400">
                 Upload optional material, add extra details, and set a time limit.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Document upload */}
               <div>
-                <Label htmlFor="material" className="block mb-2">
+                <Label htmlFor="material" className="block mb-2 text-gray-300">
                   Upload material (PDF, PPTX, Images, or Text)
                 </Label>
                 <Input
@@ -555,9 +573,10 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                   type="file"
                   accept=".pdf,.pptx,.ppt,.txt,.md,.csv,.jpg,.jpeg,.png,.gif,.webp,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/*,image/*"
                   onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                  className="bg-gray-950 text-white border-gray-600 file:text-gray-300"
                 />
                 {selectedFile && (
-                  <div className="text-sm text-gray-600 mt-2 flex items-center">
+                  <div className="text-sm text-gray-400 mt-2 flex items-center">
                     {getFileIcon(selectedFile)}
                     <span className="ml-2">
                       <span className="font-medium">{selectedFile.name}</span> ({Math.ceil(selectedFile.size / 1024)} KB)
@@ -565,15 +584,15 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                   </div>
                 )}
                 {isExtracting && (
-                  <p className="text-xs text-gray-500 mt-2">Processing document with Gemini AI…</p>
+                  <p className="text-xs text-gray-400 mt-2">Processing document with Gemini AI…</p>
                 )}
                 {extractionError && (
                   <p className="text-xs text-red-600 mt-2">{extractionError}</p>
                 )}
                 {!isExtracting && extracted && (
-                  <div className="mt-4 border rounded-md p-3 bg-gray-50">
-                    <div className="text-sm font-medium mb-1">Extraction Summary</div>
-                    <div className="text-xs text-gray-600 mb-2 space-y-1">
+                  <div className="mt-4 border border-gray-600 rounded-md p-3 bg-gray-900">
+                    <div className="text-sm font-medium mb-1 text-white">Extraction Summary</div>
+                    <div className="text-xs text-gray-400 mb-2 space-y-1">
                       <div>Type: <span className="font-semibold capitalize">{extracted.meta.fileType || 'document'}</span></div>
                       <div>Characters: <span className="font-semibold">{extracted.meta.chars.toLocaleString()}</span></div>
                       {extracted.meta.pages > 1 && (
@@ -584,8 +603,8 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                       )}
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 mb-1">Preview (first 800 chars)</div>
-                      <div className="text-sm whitespace-pre-wrap leading-relaxed max-h-64 overflow-auto bg-white border rounded p-2">
+                      <div className="text-xs text-gray-400 mb-1">Preview (first 800 chars)</div>
+                      <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed max-h-64 overflow-auto bg-gray-950 border border-gray-700 rounded p-2">
                         {extracted.text.slice(0, 800)}
                         {extracted.meta.chars > 800 ? "…" : ""}
                       </div>
@@ -593,7 +612,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                   </div>
                 )}
                 {!selectedFile && (
-                  <div className="text-xs text-gray-500 mt-2 space-y-1">
+                  <div className="text-xs text-gray-400 mt-2 space-y-1">
                     <p>Optional: Upload any document for AI-powered text extraction</p>
                     <p className="text-blue-600">✨ Now supports: PDF, PowerPoint, Images, and Text files with Gemini AI</p>
                   </div>
@@ -602,7 +621,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
 
               {/* Extra scenario details */}
               <div>
-                <Label htmlFor="details" className="block mb-2">
+                <Label htmlFor="details" className="block mb-2 text-gray-300">
                   Extra scenario details (optional)
                 </Label>
                 <Textarea
@@ -610,14 +629,14 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                   placeholder="Add specifics (e.g., audience, goals, constraints)..."
                   value={extraDetails}
                   onChange={(e) => setExtraDetails(e.target.value)}
-                  className="min-h-[120px]"
+                  className="min-h-[120px] bg-gray-950 text-white border-gray-600"
                 />
-                <div className="text-xs text-gray-500 mt-1">{extraDetails.length} characters</div>
+                <div className="text-xs text-gray-400 mt-1">{extraDetails.length} characters</div>
               </div>
 
               {/* Time limit */}
               <div>
-                <Label htmlFor="time-limit" className="block mb-2">
+                <Label htmlFor="time-limit" className="block mb-2 text-gray-300">
                   Time limit (minutes)
                 </Label>
                 <div className="flex items-center space-x-3">
@@ -633,9 +652,9 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                       if (Number.isNaN(next) || next < 0) return;
                       setTimeLimitMinutes(next);
                     }}
-                    className="w-32"
+                    className="w-32 bg-gray-950 text-white border-gray-600"
                   />
-                  <span className="text-sm text-gray-500">0 disables the timer</span>
+                  <span className="text-sm text-gray-400">0 disables the timer</span>
                 </div>
               </div>
 
@@ -669,7 +688,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                 >
                   Start Practice
                 </Button>
-                <Link href={`/practice/${scenario.id}`} className="text-sm text-blue-600 hover:underline">
+                <Link href={`/practice/${scenario.id}`} className="text-sm text-blue-400 hover:underline">
                   Skip setup and start now
                 </Link>
               </div>
@@ -678,7 +697,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
               {scenario.presentational && (
                 <div className="pt-6">
                   <div className="flex items-center justify-between mb-2">
-                    <Label className="text-base">Presentation Flow</Label>
+                    <Label className="text-base text-white">Presentation Flow</Label>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -714,17 +733,17 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                     <p className="text-xs text-green-600 mb-2">Saved.</p>
                   )}
                   {!flow && !flowLoading && (
-                    <p className="text-xs text-gray-500">Generate a structured presentation plan. You can edit and reorder it.</p>
+                    <p className="text-xs text-gray-400">Generate a structured presentation plan. You can edit and reorder it.</p>
                   )}
                   {flowLoading && (
-                    <p className="text-xs text-gray-500">Generating flow…</p>
+                    <p className="text-xs text-gray-400">Generating flow…</p>
                   )}
 
                   {flow && (
                     <div className="space-y-4">
                       {/* Intro */}
-                      <div className="border rounded-md p-3 bg-white">
-                        <div className="text-sm font-medium mb-2">Introduction</div>
+                      <div className="border border-gray-600 rounded-md p-3 bg-gray-900">
+                        <div className="text-sm font-medium mb-2 text-white">Introduction</div>
                         <SectionEditor
                           section={flow.intro}
                           onChange={(next) => {
@@ -737,7 +756,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                       {/* Body Sections */}
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <div className="text-sm font-medium">Sections</div>
+                          <div className="text-sm font-medium text-white">Sections</div>
                           <div>
                             <Button
                               type="button"
@@ -759,7 +778,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                           </div>
                         </div>
                         {flow.sections.map((sec, idx) => (
-                          <div key={sec.id} className="border rounded-md p-3 bg-white">
+                          <div key={sec.id} className="border border-gray-600 rounded-md p-3 bg-gray-900">
                             <div className="flex items-start gap-3">
                               <div className="flex flex-col gap-1">
                                 <Button
@@ -829,8 +848,8 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                       </div>
 
                       {/* Conclusion */}
-                      <div className="border rounded-md p-3 bg-white">
-                        <div className="text-sm font-medium mb-2">Conclusion</div>
+                      <div className="border border-gray-600 rounded-md p-3 bg-gray-900">
+                        <div className="text-sm font-medium mb-2 text-white">Conclusion</div>
                         <SectionEditor
                           section={flow.conclusion}
                           onChange={(next) => {
@@ -841,8 +860,8 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                       </div>
 
                       {/* Q&A */}
-                      <div className="border rounded-md p-3 bg-white">
-                        <div className="text-sm font-medium mb-2">Q&A</div>
+                      <div className="border border-gray-600 rounded-md p-3 bg-gray-900">
+                        <div className="text-sm font-medium mb-2 text-white">Q&A</div>
                         <SectionEditor
                           section={flow.qa}
                           onChange={(next) => {
@@ -859,7 +878,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
               {/* Talking points */}
               <div className="pt-4">
                 <div className="flex items-center justify-between mb-2">
-                  <Label className="text-base">AI Talking Points</Label>
+                  <Label className="text-base text-white">AI Talking Points</Label>
                   <div className="flex items-center gap-2">
                     <Button
                       type="button"
@@ -895,15 +914,15 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                   <p className="text-xs text-green-600 mb-2">Saved.</p>
                 )}
                 {!talkingPoints && !tpLoading && (
-                  <p className="text-xs text-gray-500">Generate key points to guide your practice. You can edit and reorder them.</p>
+                  <p className="text-xs text-gray-400">Generate key points to guide your practice. You can edit and reorder them.</p>
                 )}
                 {tpLoading && (
-                  <p className="text-xs text-gray-500">Generating talking points…</p>
+                  <p className="text-xs text-gray-400">Generating talking points…</p>
                 )}
                 {talkingPoints && (
                   <div className="space-y-3">
                     {talkingPoints.map((pt, idx) => (
-                      <div key={pt.id} className="border rounded-md p-3 bg-white">
+                      <div key={pt.id} className="border border-gray-600 rounded-md p-3 bg-gray-900">
                         <div className="flex items-start gap-3">
                           <div className="flex flex-col gap-1">
                             <Button
@@ -951,9 +970,10 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                                 setTpEdited(true);
                               }}
                               placeholder={`Point ${idx + 1}`}
+                              className="bg-gray-950 text-white border-gray-600"
                             />
                             <div className="mt-2 flex items-center gap-3">
-                              <span className="text-xs text-gray-500">Importance</span>
+                              <span className="text-xs text-gray-400">Importance</span>
                               <div className="flex-1 max-w-xs">
                                 <Slider
                                   value={[pt.importance]}
@@ -968,7 +988,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                                   }}
                                 />
                               </div>
-                              <span className="text-xs text-gray-600 w-5 text-center">{pt.importance}</span>
+                              <span className="text-xs text-gray-400 w-5 text-center">{pt.importance}</span>
                               <Button
                                 type="button"
                                 size="icon"
@@ -1005,7 +1025,7 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                         <Plus className="w-4 h-4 mr-2" /> Add point
                       </Button>
                       {!canAddMorePoints && (
-                        <span className="ml-2 text-xs text-gray-500">Maximum of 15 points.</span>
+                        <span className="ml-2 text-xs text-gray-400">Maximum of 15 points.</span>
                       )}
                     </div>
                   </div>
@@ -1015,24 +1035,24 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
           </Card>
 
           {/* Right: Scenario summary */}
-          <Card>
+          <Card className="bg-gray-800 border-gray-700">
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+              <CardTitle className="flex items-center justify-between text-white">
                 <span>Scenario</span>
                 <span className="text-3xl">{scenario.icon}</span>
               </CardTitle>
-              <CardDescription>{scenario.description}</CardDescription>
+              <CardDescription className="text-gray-400">{scenario.description}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3 text-sm text-gray-700">
+              <div className="space-y-3 text-sm text-gray-300">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center text-gray-600">
+                  <div className="flex items-center text-gray-400">
                     <Users className="w-4 h-4 mr-2" /> Participants
                   </div>
                   <div>{scenario.participantCount}</div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center text-gray-600">
+                  <div className="flex items-center text-gray-400">
                     <Clock className="w-4 h-4 mr-2" /> Duration
                   </div>
                   <div>
@@ -1044,14 +1064,14 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center text-gray-600">Vibe</div>
+                  <div className="flex items-center text-gray-400">Vibe</div>
                   <div className="capitalize">{scenario.vibe}</div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center text-gray-600">Presentational</div>
+                  <div className="flex items-center text-gray-400">Presentational</div>
                   <div>{scenario.presentational ? 'Yes' : 'No'}</div>
                 </div>
-                <div className="pt-2 text-xs text-gray-500">
+                <div className="pt-2 text-xs text-gray-400">
                   The timer you set in this setup replaces the default duration.
                 </div>
               </div>
@@ -1059,18 +1079,18 @@ Key focus areas: Index fund investing, portfolio diversification, and tax-advant
           </Card>
 
           {/* Right: Prompt preview */}
-          <Card className="lg:col-span-1">
+          <Card className="lg:col-span-1 bg-gray-800 border-gray-700">
             <CardHeader>
-              <CardTitle>Prompt Preview</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-white">Prompt Preview</CardTitle>
+              <CardDescription className="text-gray-400">
                 Base prompt combined with your extra details
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-xs text-gray-500 mb-2">
+              <div className="text-xs text-gray-400 mb-2">
                 Updates live as you edit details or upload documents
               </div>
-              <div className="bg-gray-50 border rounded p-3 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed max-h-96 overflow-auto">
+              <div className="bg-gray-950 border border-gray-700 rounded p-3 text-sm text-gray-300 whitespace-pre-wrap leading-relaxed max-h-96 overflow-auto">
                 {composedPrompt || 'Base prompt will appear here'}
               </div>
             </CardContent>

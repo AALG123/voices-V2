@@ -48,6 +48,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import VoiceAnalysis from "@/components/voice-analysis";
+import { IntroFade } from "@/components/IntroFade";
 
 interface PracticePageProps {
   params: Promise<{ scenarioId: string }>;
@@ -112,14 +113,14 @@ const HARDCODED_FLOW: PresentationalFlow = {
 
 // Q&A questions for presentation
 const QA_QUESTIONS = [
-  { agentIndex: 0, question: "Can you explain the difference between a 401(k) and an IRA?" },
-  { agentIndex: 1, question: "How much money do I actually need to start investing?" },
+  { agentIndex: 0, question: "I see, can you clarify the difference between a 401(k) and an IRA?" },
+  { agentIndex: 1, question: "Hmm, how much money do I actually need to start investing?" },
   { agentIndex: 2, question: "What exactly are expense ratios and why should I care?" },
-  { agentIndex: 3, question: "Should I pay off my student loans first or start investing now?" },
+  { agentIndex: 3, question: "So... should I pay off my student loans first or start investing now?" },
   { agentIndex: 0, question: "Is cryptocurrency a good investment for beginners?" },
   { agentIndex: 1, question: "How do I actually open a brokerage account?" },
-  { agentIndex: 2, question: "What happens if the stock market crashes right after I invest?" },
-  { agentIndex: 3, question: "Can you explain dollar-cost averaging in simple terms?" },
+  { agentIndex: 2, question: "Hey! What happens if the stock market crashes right after I invest?" },
+  { agentIndex: 3, question: "Could you re-explain dollar-cost averaging in simple terms?" },
 ];
 
 export default function PracticePage({ params }: PracticePageProps) {
@@ -169,6 +170,9 @@ export default function PracticePage({ params }: PracticePageProps) {
     const saved = localStorage.getItem("tts-enabled");
     return saved ? JSON.parse(saved) : true;
   });
+  
+  // Track currently speaking agent
+  const [currentSpeaker, setCurrentSpeaker] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentResponseTimers = useRef<NodeJS.Timeout[]>([]);
@@ -197,6 +201,17 @@ export default function PracticePage({ params }: PracticePageProps) {
       localStorage.setItem("tts-enabled", JSON.stringify(ttsEnabled));
     }
   }, [ttsEnabled, scenario?.id]);
+
+  // Subscribe to TTS speaking changes
+  useEffect(() => {
+    const unsubscribe = ttsService.onSpeakingChange((agentName) => {
+      setCurrentSpeaker(agentName);
+    });
+    
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Check for Speech Recognition support
   useEffect(() => {
@@ -886,21 +901,38 @@ export default function PracticePage({ params }: PracticePageProps) {
 
   if (sessionEnded && !showVoiceAnalysis) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full text-center">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl p-8 max-w-md w-full text-center">
           <div className="text-6xl mb-4">🎉</div>
-          <h1 className="text-3xl font-bold mb-2">Session Complete!</h1>
-          <p className="text-gray-600 mb-6">
+          <h1 className="text-3xl font-bold mb-2 text-white">Session Complete!</h1>
+          <p className="text-gray-400 mb-6">
             Analyzing your voice performance...
           </p>
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-gray-900 flex flex-col">
+    <div className="h-screen bg-gray-900 flex flex-col relative overflow-hidden">
+      <IntroFade />
+      {/* Video Background */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover opacity-30 z-0"
+      >
+        <source src="/assets/animated-backdrop.webm" type="video/webm" />
+      </video>
+      
+      {/* Overlay to darken video */}
+      <div className="absolute inset-0 bg-gray-900/70 z-0"></div>
+      
+      {/* Content - needs higher z-index */}
+      <div className="relative z-10 h-full flex flex-col">
       {/* Top Bar */}
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-4">
@@ -1113,22 +1145,48 @@ export default function PracticePage({ params }: PracticePageProps) {
         {/* Center - Agent Videos */}
         <div className="flex-1 p-4 overflow-auto">
           <div className="grid grid-cols-2 gap-4 max-w-4xl mx-auto">
-            {agents.map((agent) => (
-              <div
-                key={agent.id}
-                className="bg-gray-700 rounded-lg aspect-video flex items-center justify-center relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-green-500 to-teal-600 flex items-center justify-center">
-                  <div className="text-white text-6xl">{agent.avatar}</div>
+            {agents.map((agent, index) => {
+              const isSpeaking = currentSpeaker === agent.name;
+              // Different gradient for each agent
+              const gradients = [
+                'from-green-500 to-teal-600',
+                'from-orange-500 to-red-600',
+                'from-purple-500 to-pink-600',
+                'from-yellow-500 to-orange-600',
+                'from-blue-500 to-indigo-600',
+                'from-pink-500 to-rose-600',
+                'from-cyan-500 to-blue-600',
+                'from-lime-500 to-green-600',
+              ];
+              const gradient = gradients[index % gradients.length];
+              
+              return (
+                <div
+                  key={agent.id}
+                  className={`bg-gray-700 rounded-lg aspect-video flex items-center justify-center relative overflow-hidden transition-all duration-300 ${
+                    isSpeaking ? 'ring-4 ring-blue-500 ring-offset-2 ring-offset-gray-900 shadow-xl shadow-blue-500/50' : ''
+                  }`}
+                >
+                  <div className={`absolute inset-0 bg-gradient-to-br ${gradient} flex items-center justify-center transition-all duration-300 ${
+                    isSpeaking ? 'scale-105' : ''
+                  }`}>
+                    <div className="text-white text-6xl">{agent.avatar}</div>
+                  </div>
+                  <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                    {agent.name}
+                  </div>
+                  <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                    {scenario.id === 'presentation' ? 'Student' : agent.personality}
+                  </div>
+                  {isSpeaking && (
+                    <div className="absolute top-2 left-2 flex items-center gap-1 bg-blue-600 text-white text-xs px-2 py-1 rounded animate-pulse">
+                      <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                      <span>Speaking</span>
+                    </div>
+                  )}
                 </div>
-                <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                  {agent.name}
-                </div>
-                <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                  {scenario.id === 'presentation' ? 'Student' : agent.personality}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -1400,6 +1458,7 @@ export default function PracticePage({ params }: PracticePageProps) {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

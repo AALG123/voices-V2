@@ -242,12 +242,8 @@ export default function PracticePage({ params }: PracticePageProps) {
       setInterimTranscript(interimText);
 
       if (finalText.trim()) {
-        const now = Date.now();
-        // Debounce: only process if enough time has passed
-        if (now - lastTranscriptTimeRef.current > 1500) {
-          handleUserSpeech(finalText.trim());
-          lastTranscriptTimeRef.current = now;
-        }
+        setUserInput(finalText.trim());
+        setInterimTranscript("");
       }
     };
 

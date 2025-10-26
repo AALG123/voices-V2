@@ -29,25 +29,25 @@ interface VoiceAnalysisData {
   areasForImprovement: string[];
 }
 
-// Generate realistic-looking random scores
+// Generate realistic-looking random scores with non-extreme values
 const generateVoiceAnalysis = (): VoiceAnalysisData => {
-  // Overall score between 65-95
-  const overallScore = Math.floor(Math.random() * 30) + 65;
+  // Overall score between 68-88 (avoiding extremes)
+  const overallScore = Math.floor(Math.random() * 20) + 68;
   
-  // Fluency scores - lower is better
-  const stutters = Math.floor(Math.random() * 8);
-  const fillerWords = Math.floor(Math.random() * 3);
-  const repetitions = Math.floor(Math.random() * 10) + 3;
+  // Fluency scores - realistic middle-range values
+  const stutters = Math.floor(Math.random() * 4) + 2; // 2-5 stutters
+  const fillerWords = Math.floor(Math.random() * 2) + 1; // 1-2 filler words (never 0)
+  const repetitions = Math.floor(Math.random() * 5) + 5; // 5-9 repetitions
   
-  // Speech pace
-  const wpm = Math.floor(Math.random() * 50) + 80; // 80-130 wpm
-  const speakingTimeSeconds = Math.floor(Math.random() * 30) + 30;
-  const pauseTimeSeconds = Math.floor(Math.random() * 10);
+  // Speech pace - realistic speaking range
+  const wpm = Math.floor(Math.random() * 30) + 95; // 95-125 wpm (avoiding extremes)
+  const speakingTimeSeconds = Math.floor(Math.random() * 20) + 40; // 40-60 seconds
+  const pauseTimeSeconds = Math.floor(Math.random() * 5) + 3; // 3-8 seconds
   
-  // Voice quality percentages
-  const clarity = Math.floor(Math.random() * 15) + 85; // 85-100%
-  const volumeConsistency = Math.floor(Math.random() * 20) + 75; // 75-95%
-  const pitchConsistency = Math.floor(Math.random() * 20) + 75; // 75-95%
+  // Voice quality percentages - realistic middle-high range
+  const clarity = Math.floor(Math.random() * 12) + 82; // 82-94% (avoiding perfect scores)
+  const volumeConsistency = Math.floor(Math.random() * 15) + 78; // 78-93%
+  const pitchConsistency = Math.floor(Math.random() * 15) + 77; // 77-92%
   
   // Grade calculation
   const getGrade = (value: number, thresholds: number[]) => {

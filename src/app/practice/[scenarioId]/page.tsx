@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect, useRef } from "react";
+import { use, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -56,6 +56,14 @@ interface PracticePageProps {
 interface MediaDeviceInfo {
   deviceId: string;
   label: string;
+}
+
+// Browser Speech Recognition types
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
 }
 
 // Hardcoded presentation flow for investment presentation
@@ -145,11 +153,16 @@ export default function PracticePage({ params }: PracticePageProps) {
   >([]);
   const [extractedDocumentText, setExtractedDocumentText] = useState<string>("");
   
+  
   // Presentation-specific state
   const [currentFlowSection, setCurrentFlowSection] = useState<string>("intro");
   const [presentationFlow, setPresentationFlow] = useState<PresentationalFlow | null>(null);
+  
+  // State for Q&A management
   const [qaStartTime, setQaStartTime] = useState<number | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [awaitingUserResponse, setAwaitingUserResponse] = useState(false);
+  const [hasAskedInitialQuestion, setHasAskedInitialQuestion] = useState(false);
   
   // TTS State - Always enabled for presentation
   const [ttsEnabled, setTtsEnabled] = useState(() => {
@@ -164,6 +177,14 @@ export default function PracticePage({ params }: PracticePageProps) {
   const videoStreamRef = useRef<MediaStream | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
   const qaTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Speech Recognition State
+  const [isListening, setIsListening] = useState(false);
+  const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const lastTranscriptTimeRef = useRef<number>(Date.now());
 
   // Force TTS on for presentation scenario
   useEffect(() => {
@@ -177,6 +198,144 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   }, [ttsEnabled, scenario?.id]);
 
+  // Check for Speech Recognition support
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setSpeechRecognitionSupported(true);
+    } else {
+      setSpeechRecognitionSupported(false);
+      setSpeechError("Speech recognition is not supported in your browser. Please use Chrome or Edge.");
+    }
+  }, []);
+
+  // Initialize Speech Recognition
+  const initializeSpeechRecognition = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return null;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      console.log("Speech recognition started");
+      setIsListening(true);
+      setSpeechError(null);
+    };
+
+    recognition.onresult = (event: any) => {
+      let interimText = "";
+      let finalText = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalText += transcript + " ";
+        } else {
+          interimText += transcript;
+        }
+      }
+
+      setInterimTranscript(interimText);
+
+      if (finalText.trim()) {
+        const now = Date.now();
+        // Debounce: only process if enough time has passed
+        if (now - lastTranscriptTimeRef.current > 1500) {
+          handleUserSpeech(finalText.trim());
+          lastTranscriptTimeRef.current = now;
+        }
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      if (event.error === "no-speech") {
+        // Silently restart
+      } else if (event.error === "aborted") {
+        setSpeechError("Speech recognition was aborted.");
+      } else if (event.error === "not-allowed") {
+        setSpeechError("Microphone access denied. Please allow microphone access.");
+      } else {
+        setSpeechError(`Speech recognition error: ${event.error}`);
+      }
+    };
+
+    recognition.onend = () => {
+      console.log("Speech recognition ended");
+      setIsListening(false);
+      setInterimTranscript("");
+      
+      // Restart if Q&A is active and we're waiting for user response
+      if (qaStartTime && awaitingUserResponse && recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (error) {
+          console.error("Failed to restart recognition:", error);
+        }
+      }
+    };
+
+    return recognition;
+  };
+
+  // Handle user speech input
+  const handleUserSpeech = (text: string) => {
+    if (!text.trim() || sessionEnded) return;
+
+    const userMessage: Message = {
+      id: `msg-speech-${Date.now()}`,
+      agentId: "user",
+      agentName: "You",
+      content: text,
+      timestamp: new Date(),
+      isUser: true,
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    
+    console.log(`[handleUserSpeech] Scenario: ${scenario?.id}, QA Started: ${!!qaStartTime}, Awaiting Response: ${awaitingUserResponse}, Question Index: ${currentQuestionIndex}`);
+    
+    // For presentation scenario during Q&A, trigger next question after user responds
+    if (scenario?.id === 'presentation' && qaStartTime && awaitingUserResponse) {
+      console.log('[handleUserSpeech] Triggering next Q&A question after speech');
+      setAwaitingUserResponse(false);
+      askNextQuestion();
+    }
+  };
+
+  // Start speech recognition when Q&A becomes active
+  useEffect(() => {
+    if (scenario?.id === 'presentation' && qaStartTime && !sessionEnded && speechRecognitionSupported) {
+      // Start speech recognition for Q&A
+      if (!recognitionRef.current) {
+        const recognition = initializeSpeechRecognition();
+        if (recognition) {
+          recognitionRef.current = recognition;
+          try {
+            recognition.start();
+            console.log('[STT] Started speech recognition for Q&A');
+          } catch (error) {
+            console.error("Failed to start recognition:", error);
+          }
+        }
+      }
+    }
+    
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore
+        }
+      }
+    };
+  }, [qaStartTime, sessionEnded, speechRecognitionSupported, scenario?.id]);
+
   // Set presentation flow
   useEffect(() => {
     if (scenario?.id === 'presentation') {
@@ -184,74 +343,102 @@ export default function PracticePage({ params }: PracticePageProps) {
     }
   }, [scenario]);
 
+  // Function to ask next question (only called after user speaks)
+  const askNextQuestion = useCallback(() => {
+    if (currentQuestionIndex >= QA_QUESTIONS.length || sessionEnded || !qaStartTime) {
+      console.log('[Q&A] No more questions or session ended');
+      return;
+    }
+    
+    if (!agents || agents.length === 0) {
+      console.error('[Q&A] No agents available');
+      return;
+    }
+    
+    const qa = QA_QUESTIONS[currentQuestionIndex];
+    const agent = agents[qa.agentIndex % agents.length];
+    
+    if (!agent) {
+      console.error('[Q&A] No agent found for question', currentQuestionIndex);
+      return;
+    }
+    
+    console.log(`[Q&A] Agent ${agent.name} asking question ${currentQuestionIndex + 1}/${QA_QUESTIONS.length} (after user response)`);
+    
+    // Add a natural delay before asking the next question
+    setTimeout(() => {
+      if (sessionEnded) return;
+      
+      const questionMessage: Message = {
+        id: `qa-${Date.now()}-${currentQuestionIndex}`,
+        agentId: agent.id,
+        agentName: agent.name,
+        content: qa.question,
+        timestamp: new Date(),
+        isUser: false,
+      };
+
+      setMessages((prev) => [...prev, questionMessage]);
+      
+      // Queue TTS for question
+      console.log(`[TTS] Queueing speech for ${agent.name} with voice ${agent.voiceId}`);
+      ttsService.queueSpeech({
+        text: qa.question,
+        agentName: agent.name,
+        messageId: questionMessage.id,
+        voiceId: agent.voiceId || 'b5f4515fd395410b9ed3aef6fa51d9a0',
+      });
+      
+      setCurrentQuestionIndex(prev => prev + 1);
+      setAwaitingUserResponse(true);
+    }, 2000 + Math.random() * 2000); // 2-4 second delay after user speaks
+  }, [currentQuestionIndex, sessionEnded, qaStartTime, agents]);
+
   // Start Q&A session after 30 seconds for presentation
   useEffect(() => {
     if (scenario?.id === 'presentation' && timeElapsed === 30 && !qaStartTime && agents.length > 0 && !sessionEnded) {
       console.log('[Q&A] Starting Q&A session at 30 seconds');
-      console.log('[Q&A] Available agents:', agents.map(a => `${a.name} (${a.voiceId})`));
       setQaStartTime(timeElapsed);
       setCurrentFlowSection("qa");
+      setAwaitingUserResponse(false);
       
-      // Force enable TTS for Q&A
-      ttsService.setEnabled(true);
-      
-      const askQuestion = (index: number) => {
-        if (index >= QA_QUESTIONS.length || sessionEnded) {
-          console.log('[Q&A] Session complete or ended');
-          return;
-        }
-        
-        const qa = QA_QUESTIONS[index];
-        const agent = agents[qa.agentIndex % agents.length];
-        
-        if (!agent) {
-          console.error('[Q&A] No agent found for question', index);
-          return;
-        }
-        
-        console.log(`[Q&A] Agent ${agent.name} (voice: ${agent.voiceId}) asking question ${index + 1}/${QA_QUESTIONS.length}`);
-        
-        const questionMessage: Message = {
-          id: `qa-${Date.now()}-${index}`,
-          agentId: agent.id,
-          agentName: agent.name,
-          content: qa.question,
-          timestamp: new Date(),
-          isUser: false,
-        };
+      // Ask the first question to start Q&A
+      if (!hasAskedInitialQuestion && agents.length > 0 && currentQuestionIndex < QA_QUESTIONS.length) {
+        setTimeout(() => {
+          const qa = QA_QUESTIONS[0];
+          const agent = agents[qa.agentIndex % agents.length];
+          
+          if (agent) {
+            console.log(`[Q&A] Initial question from ${agent.name}`);
+            
+            const questionMessage: Message = {
+              id: `qa-${Date.now()}-0`,
+              agentId: agent.id,
+              agentName: agent.name,
+              content: qa.question,
+              timestamp: new Date(),
+              isUser: false,
+            };
 
-        setMessages((prev) => [...prev, questionMessage]);
-        
-        // Always queue TTS for presentation Q&A
-        console.log(`[TTS] Queueing speech for ${agent.name} with voice ${agent.voiceId}`);
-        ttsService.queueSpeech({
-          text: qa.question,
-          agentName: agent.name,
-          messageId: questionMessage.id,
-          voiceId: agent.voiceId || 'b5f4515fd395410b9ed3aef6fa51d9a0',
-        });
-        
-        // Schedule next question with longer delay
-        const nextIndex = index + 1;
-        if (nextIndex < QA_QUESTIONS.length && !sessionEnded) {
-          const delay = 8000 + Math.random() * 4000; // 8-12 seconds
-          console.log(`[Q&A] Next question scheduled in ${delay/1000} seconds`);
-          qaTimerRef.current = setTimeout(() => {
-            if (!sessionEnded) {
-              askQuestion(nextIndex);
-            }
-          }, delay);
-        }
-      };
-      
-      // Start with first question after 2 seconds
-      setTimeout(() => {
-        if (!sessionEnded) {
-          askQuestion(0);
-        }
-      }, 2000);
+            setMessages((prev) => [...prev, questionMessage]);
+            
+            // Queue TTS for initial question
+            console.log(`[TTS] Queueing speech for ${agent.name} with voice ${agent.voiceId}`);
+            ttsService.queueSpeech({
+              text: qa.question,
+              agentName: agent.name,
+              messageId: questionMessage.id,
+              voiceId: agent.voiceId || 'b5f4515fd395410b9ed3aef6fa51d9a0',
+            });
+            
+            setCurrentQuestionIndex(1);
+            setAwaitingUserResponse(true);
+            setHasAskedInitialQuestion(true);
+          }
+        }, 2000);
+      }
     }
-  }, [timeElapsed, qaStartTime, agents, sessionEnded, scenario?.id]);
+  }, [timeElapsed, qaStartTime, agents, sessionEnded, scenario?.id, hasAskedInitialQuestion, currentQuestionIndex]);
 
   // Clean up Q&A timer
   useEffect(() => {
@@ -598,12 +785,23 @@ export default function PracticePage({ params }: PracticePageProps) {
     setMessages((prev) => [...prev, userMessage]);
     setUserInput("");
     
-    if (scenario?.id !== 'presentation') {
+    console.log(`[handleSendMessage] Scenario: ${scenario?.id}, QA Started: ${!!qaStartTime}, Awaiting Response: ${awaitingUserResponse}, Question Index: ${currentQuestionIndex}`);
+    
+    // For presentation scenario during Q&A, trigger next question after user responds
+    if (scenario?.id === 'presentation' && qaStartTime && awaitingUserResponse) {
+      console.log('[handleSendMessage] Triggering next Q&A question after user response');
+      setAwaitingUserResponse(false);
+      askNextQuestion();
+    } else if (scenario?.id !== 'presentation') {
+      // Regular agent response logic for non-presentation scenarios
+      console.log('[handleSendMessage] Non-presentation scenario, using regular agent response');
       setConvState((prev) => {
         const next = updateStateOnUserMessage(prev);
         if (agents.length > 0 && !sessionEnded) scheduleAgentResponse(next);
         return next;
       });
+    } else {
+      console.log('[handleSendMessage] Presentation but not in Q&A or not awaiting response');
     }
   };
 
@@ -971,13 +1169,47 @@ export default function PracticePage({ params }: PracticePageProps) {
           </div>
 
           <div className="p-4 border-t border-gray-700">
+            {/* Show interim transcript during speech recognition */}
+            {interimTranscript && scenario?.id === 'presentation' && (
+              <div className="mb-2 p-2 bg-blue-900 bg-opacity-50 rounded text-xs text-blue-200">
+                <span className="text-blue-400">Listening:</span> {interimTranscript}
+              </div>
+            )}
+            
+            {/* Show speech recognition status for presentation */}
+            {scenario?.id === 'presentation' && qaStartTime && (
+              <div className="mb-2 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  {isListening ? (
+                    <>
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-green-400">Voice recognition active - speak your answer</span>
+                    </>
+                  ) : awaitingUserResponse ? (
+                    <>
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full" />
+                      <span className="text-yellow-400">Waiting for your response...</span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 bg-gray-500 rounded-full" />
+                      <span className="text-gray-400">Processing...</span>
+                    </>
+                  )}
+                </div>
+                {speechError && (
+                  <span className="text-red-400 text-xs">{speechError}</span>
+                )}
+              </div>
+            )}
+            
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
+                placeholder={scenario?.id === 'presentation' && qaStartTime ? "Speak or type your answer..." : "Type your message..."}
                 disabled={isMuted}
                 className="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
